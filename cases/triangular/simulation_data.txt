@@ -1,0 +1,157 @@
+************* Bare triangular model
+
+Ks = 0.00001
+tmax = 1250
+domain = 0.3
+Nreruns = 100
+Nrandcuts = 10 
+tscale = 15/N
+time = 900 s
+
+Prosessing Gset/G1
+The best cut is 11438.0, the worst cut is 11247.0; the best random cut is 11398.0
+Prosessing Gset/G2
+The best cut is 11424.0, the worst cut is 11243.0; the best random cut is 11405.0
+Prosessing Gset/G3
+The best cut is 11413.0, the worst cut is 11227.0; the best random cut is 11409.0
+Prosessing Gset/G4
+The best cut is 11492.0, the worst cut is 11233.0; the best random cut is 11474.0
+Prosessing Gset/G5
+The best cut is 11458.0, the worst cut is 11234.0; the best random cut is 11458.0
+Prosessing Gset/G22
+The best cut is 13052.0, the worst cut is 12880.0; the best random cut is 13042.0
+Prosessing Gset/G23
+The best cut is 13021.0, the worst cut is 12876.0; the best random cut is 12998.0
+Prosessing Gset/G24
+The best cut is 13016.0, the worst cut is 12882.0; the best random cut is 13006.0
+Prosessing Gset/G25
+The best cut is 13020.0, the worst cut is 12876.0; the best random cut is 13002.0
+Prosessing Gset/G26
+The best cut is 13012.0, the worst cut is 12878.0; the best random cut is 13005.0
+Prosessing Gset/G43
+The best cut is 6531.0, the worst cut is 6446.0; the best random cut is 6518.0
+Prosessing Gset/G44
+The best cut is 6540.0, the worst cut is 6448.0; the best random cut is 6534.0
+Prosessing Gset/G45
+The best cut is 6536.0, the worst cut is 6439.0; the best random cut is 6510.0
+Prosessing Gset/G46
+The best cut is 6527.0, the worst cut is 6446.0; the best random cut is 6511.0
+Prosessing Gset/G47
+The best cut is 6532.0, the worst cut is 6445.0; the best random cut is 6522.0
+Prosessing Gset/G48
+The best cut is 5550.0, the worst cut is 5384.0; the best random cut is 5536.0
+Prosessing Gset/G49
+The best cut is 5544.0, the worst cut is 5376.0; the best random cut is 5536.0
+Prosessing Gset/G50
+The best cut is 5528.0, the worst cut is 5350.0; the best random cut is 5526.0
+Prosessing Gset/G51
+The best cut is 3724.0, the worst cut is 3661.0; the best random cut is 3711.0
+Prosessing Gset/G52
+The best cut is 3733.0, the worst cut is 3677.0; the best random cut is 3728.0
+Prosessing Gset/G53
+The best cut is 3731.0, the worst cut is 3681.0; the best random cut is 3715.0
+Prosessing Gset/G54
+The best cut is 3738.0, the worst cut is 3681.0; the best random cut is 3717.0
+
+************** Processed triangular model
+
+model: triangular-hybrid-optimized
+Ks = 0.00001
+tmax = 350
+domain = 0.4
+Nreruns = 200
+tscale = 20/N
+Vstart = dom.*Dice.get_initial(Nvert, (-1.0, 1.0))./1 .+ bestconf.*0.8
+dom /=1.01
+time = 600 s
+
+Prosessing Gset/G1
+The best cut is 11533.0/11588.0
+Prosessing Gset/G2
+The best cut is 11541.0/11590.0
+Prosessing Gset/G3
+The best cut is 11570.0/11622.0
+Prosessing Gset/G4
+The best cut is 11595.0/11638.0
+Prosessing Gset/G5
+The best cut is 11576.0/11622.0
+Prosessing Gset/G22
+The best cut is 13206.0/13279.0
+Prosessing Gset/G23
+The best cut is 13212.0/13297.0
+Prosessing Gset/G24
+The best cut is 13175.0/13260.0
+Prosessing Gset/G25
+The best cut is 13216.0/13286.0
+Prosessing Gset/G26
+The best cut is 13167.0/13245.0
+Prosessing Gset/G43
+The best cut is 6615.0/6650.0
+Prosessing Gset/G44
+The best cut is 6570.0/6617.0
+Prosessing Gset/G45
+The best cut is 6579.0/6631.0
+Prosessing Gset/G46
+The best cut is 6600.0/6643.0
+Prosessing Gset/G47
+The best cut is 6574.0/6616.0
+Prosessing Gset/G48
+The best cut is 6000.0/6000.0
+Prosessing Gset/G49
+The best cut is 5938.0/5938.0
+Prosessing Gset/G50
+The best cut is 5778.0/5778.0
+Prosessing Gset/G51
+The best cut is 3792.0/3819.0
+Prosessing Gset/G52
+The best cut is 3803.0/3830.0
+Prosessing Gset/G53
+The best cut is 3806.0/3829.0
+Prosessing Gset/G54
+The best cut is 3804.0/3830.0
+
+
+********************** Circut
+
+max      ................ obj     : max or min
+cut      ................ task    : cut or bis (bisection)
+0        ................ plevel  : printout leval: 0, 1 or 2
+1        ................ init    : initialize t  : 0, 1 or 2
+75        ................ npert   : No. perturbed restarts >= 0
+50        ................ multi   : No. of multiple starts >= 1
+1.e-4    ................ tolf    : tol for relative f-change
+1.e-4    ................ tolg    : tol for weighted g-norm
+0.20     ................ pert    : perturbations from a cut
+0.00     ................ rho     : penalty parameter for bis
+350      ................ maxiter : maximum iteration number
+4.0      ................ maxstep : maximum steplength allowed 
+T        ................ locsch  : whether local search or not
+F        ................ savecut : save the   cut    x: T or F
+F        ................ savesol : save the solution t: T or F
+
+------------  Elapsed Time:  1581.176 sec.
+
+ <G1> n =   800,  m =   19176  <G1> bestcut:     11624.00
+ <G2> n =   800,  m =   19176  <G2> bestcut:     11620.00
+ <G3> n =   800,  m =   19176  <G3> bestcut:     11622.00
+ <G4> n =   800,  m =   19176  <G4> bestcut:     11646.00
+ <G5> n =   800,  m =   19176  <G5> bestcut:     11631.00 
+ <G22> n =  2000, m =   19990 <G22> bestcut:     13353.00 
+ <G23> n =  2000, m =   19990 <G23> bestcut:     13332.00 
+ <G24> n =  2000, m =   19990 <G24> bestcut:     13324.00  
+ <G25> n =  2000, m =   19990 <G25> bestcut:     13329.00 
+ <G26> n =  2000, m =   19990 <G26> bestcut:     13321.00
+ <G43> n =  1000, m =    9990 <G43> bestcut:      6659.00
+ <G44> n =  1000, m =    9990 <G44> bestcut:      6647.00
+ <G45> n =  1000, m =    9990 <G45> bestcut:      6653.00
+ <G46> n =  1000, m =    9990 <G46> bestcut:      6645.00
+ <G47> n =  1000, m =    9990 <G47> bestcut:      6656.00
+ <G48> n =  3000, m =    6000 <G48> bestcut:      6000.00
+ <G49> n =  3000, m =    6000 <G49> bestcut:      6000.00
+ <G50> n =  3000, m =    6000 <G50> bestcut:      5880.00
+ <G51> n =  1000, m =    5909 <G51> bestcut:      3846.00
+ <G52> n =  1000, m =    5916 <G52> bestcut:      3847.00
+ <G53> n =  1000, m =    5914 <G53> bestcut:      3846.00
+ <G54> n =  1000, m =    5916 <G54> bestcut:      3850.00
+ 
+ 
