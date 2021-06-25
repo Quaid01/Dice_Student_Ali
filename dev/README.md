@@ -6,4 +6,4 @@ This is a collection of functions for dynamical Ising solvers.
 
 `dice_library.jl` - the development version of the module
 
-`*.ipynb` - various files testing particular functions and demonstrating the usage.
+`hf.jl` - a temporary hack for scanning Hamming vicinities
