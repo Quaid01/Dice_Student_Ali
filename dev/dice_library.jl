@@ -201,7 +201,6 @@ function EuclidD(V1, V2)
     #   V1, V2 - two arrays on the graph vertices
     #
     # OUTPUT:
-    #
     #   Σ_v (V_1(v) - V_2(v))^2
 
     return sum((V1 .- V2).^2)
@@ -244,39 +243,6 @@ function c_variance(V, intervals)
     end
 
     return out
-end
-
-function three_cell_variance(V)
-    # Evaluates "three-cell variance" of data in V (assumed rounded up)
-    #
-    # INPUT:
-    #   V - array of real data
-    #
-    # OUTPUT:
-    #   vars - 3-element array with variances inside three intervals
-    
-    intervals = zeros(3, 2)
-    intervals[1, :] = [-2, -2 + 4/3]
-    intervals[2, :] = [-2 + 4/3, 2 - 4/3] #
-    intervals[3, :] = [2 - 4/3, 2]
-
-    return c_variance(V, intervals)
-end
-
-function two_cell_variance(V)
-    # Evaluates "three-cell variance" of data in V (assumed rounded up)
-    #
-    # INPUT:
-    #   V - array of real data
-    #
-    # OUTPUT:
-    #   vars - 3-element array with variances inside three intervals
-    
-    intervals = zeros(2, 2)
-    intervals[1, :] = [-2, 0]
-    intervals[2, :] = [0, 2] 
-
-    return c_variance(V, intervals)
 end
 
 # function H_Ising(graph, conf)
@@ -764,7 +730,8 @@ end
 
 function propagateAdaptively(model::Model, duration, Vini)
     # Advances the model::Model at most duration - 1 steps forward with an adaptive time scale
-    # TODO: the adaptive part is dubious. Fix it.
+    #
+    #########    NOTE: the current state is unreliable (under construction)!!!     #########
     #
     # Returns only the final state vector
     #
@@ -787,19 +754,13 @@ function propagateAdaptively(model::Model, duration, Vini)
     curEnergy = energy(graph, method, V)
 
     exccount = 0 # upscales counter
-
     tau = 0
     while tau < duration
         exccount = 0 # upscales counter
         grad  = step_rate(graph, method, V, model.Ks)
-        #grad ./= max(1, curEnergy)   # as in CirCut
 
         ΔV = scale.*grad
         grad2 = sum(grad .* grad)
-
-        if grad2 > 100*nv(graph)
-            debug_msg("WARNING: strong gradient, $grad2")
-        end
         bestshift = grad2*scale*cconst
 
         candEnergy = energy(graph, method, V + ΔV)
@@ -854,19 +815,13 @@ function energy(graph, method::Function, V::Array)
     # Note: this is essential that this energy evaluates only the coupling energy without 
     #       any anisotropic terms
     #
-    # NOTE: It's broken as of now! Need to pass the correct method
+    #####            NOTE: It's broken as of now! Need to pass the correct method
     #
     # INPUT:
     #   method here is the energy of the elementary one-edge graph. Of course, this is
     #          not the same method as in the propagation functions (that woould be the minus 
     #          gradient of the method passed to this function)
     
-    # if sum(abs.(V))/length(V) > 20
-    #     thing = (sum(abs.(V)))
-    #     println("WARNING: large state wants its energy $thing")
-    #     return thing
-    # end
-
     en = 0
     for edge in edges(graph)
         en += cosine(V[edge.src] - V[edge.dst])
@@ -940,7 +895,6 @@ function conf_decay_states(graph, conf::Array, listlen = 3)
     L = laplacian_matrix(graph)
     
     D = zeros(NVert, 1) # to collect sums of rows
-    
     for (i,j) in zip(findnz(L)...)
         L[i,j] *= conf[i]*conf[j]
         if i != j
@@ -953,8 +907,8 @@ function conf_decay_states(graph, conf::Array, listlen = 3)
         L[i,i] = -D[i]
     end
     
-    oe, ov = eigs(L, nev=1, which=:LR)
-    return (oe, ov)
+    eigvalue, eigvector = eigs(L, nev=1, which=:LR)
+    return (eigvalue, eigvector)
 end
 
 function scan_for_best_configuration(model::Model, Vc::Array, domain::Float64, tmax::Integer, Ninitial::Integer)
