@@ -43,7 +43,6 @@ Nrandcuts = 10
 
 # Arrays with the best cuts
 bestcuts = zeros(length(listTests))
-leastcuts = zeros(length(listTests))
 bestrandcuts  = zeros(length(listTests))
 
 for i in 1:length(listTests)

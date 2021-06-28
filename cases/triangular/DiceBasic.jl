@@ -29,38 +29,11 @@ mutable struct Model
     Model(graph, method, scale, Ks, silence) = new(graph, method, scale, Ks, silence)
 end
 
-##################
-#
-# Internal service functions
-#
-##################
-
-function message(model::Model, out, importance = 1)
-    if importance > model.silence
-        println("$out ($importance)")
-    end
-end
-
-const DEBUG = 1
-function debug_msg(out)
-    if DEBUG > 0
-        println("$out (DEBUG = $DEBUG)")
-    end
-end
-
 ##############################
 #
 # Common methods for using in evaluating the change rate
 #
 ##############################
-
-function none_method(v)
-    return 0*v  # for the type stability thing
-end
-
-function none_method(v1, v2)
-    return 0*v1  # for the type stability thing
-end
 
 const Pi2 = pi/2
 const Pi4 = pi/4
@@ -78,9 +51,6 @@ function sine(v1, v2)
 end
 
 function triangular(v)
-    # local p::Integer
-    # local parity::Integer
-    # local envelope::Integer
     p = Int.(floor.(v./2 .+ 1/2))
     return (v .- p.*2).*dtri(v)
 end
@@ -280,19 +250,16 @@ function local_twosearch(graph, conf)
     return conf
 end
 
-function extract_configuration(V::Array, threshold) #, width = 2)
+function extract_configuration(V::Array, threshold)
     # Binarizes V according to the threshold
     # In the modular form, the mapping looks like
     #
-    # V ∈ [threshold, threshold + width] -> C_1
-    # V ∈ [threshold - width, threshold] -> C_2
-    #
-    # On top of this, we use the global sign inversion symmetry
+    # V ∈ [left, left + 2] -> C_1
+    # V ∈ [left - 2, left] -> C_2
     #
     # INPUT:
     #   V - data array (is presumed to be rounded and within [-2, 2])
     #   threshold - the rounding center
-    #   width - (TODO: the width of the central interval)
     #
     # OUTPUT:
     #   size(V) array with elements + 1 and -1 depending on the relation of 
@@ -300,10 +267,6 @@ function extract_configuration(V::Array, threshold) #, width = 2)
 
     width = 1 # half-width of the rounding interval
 
-    # if sum(abs.(V))/length(V) > 2
-    #     println("Error: V value is out of bounds")
-    # end
-    
     if abs(threshold) <= 1
         inds = threshold - width .<= V .< threshold + width 
     else
@@ -311,10 +274,6 @@ function extract_configuration(V::Array, threshold) #, width = 2)
     end
     out = 2 .* inds .- 1
     
-    # # if we want the outcome with smaller total displacement
-    # if sum(abs.(V .+ out)) < sum(abs.(V .- out))
-    #     out .*= -1
-    # end
     return out
 end
 
@@ -384,27 +343,6 @@ function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
         end
     end
     return out
-end
-
-function propagate(graph, method::Function, Ks, scale, duration, Vini)
-    # Advances the graph duration - 1 steps forward
-    # This is the short version, which returns only the final state vector
-    #
-    # scale - parameter to tweak the dynamics (TODO: make a version with an ODE solver)
-    # duration - how many time points to evaluate
-    # Vini - the initial conditions
-    #
-    # OUTPUT:
-    #   [V[1] .. V[nv(graph)] at t = duration - 1
-       
-    V = Vini
-
-    for tau in 1:(duration - 1)
-        ΔV = scale.*step_rate(graph, method, V, Ks)
-        V += ΔV
-    end
-            
-    return V
 end
 
 function propagate(model::Model, duration, Vini)
