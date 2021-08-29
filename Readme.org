@@ -1,0 +1,16 @@
+#+TITLE: Dice library
+#+AUTHOR: Mikhail Erementchouk
+#+EMAIL: merement@gmail.com
+#+DATE: <2021-08-29 Sun>
+#+OPTIONS: tex: t LaTeX: t toc:nil ^:{}
+#+DESCRIPTION:
+
+* Dice
+
+=Dice= is an implemented in Julia research dynamic Ising solver based on nonlinear relaxations.
+
+* Content
+
+[[file:dev][dev]] contains the development version of the library
+
+[[file:cases/][cases]] holds particular "releases" (see the description inside)
