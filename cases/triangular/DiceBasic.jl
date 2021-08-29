@@ -50,6 +50,13 @@ function sine(v1, v2)
     return sine(v1 - v2)
 end
 
+function dtri(v)
+    # the derivative of the triangular function
+    p = Int.(floor.(v./2 .+ 1/2))
+    parity = rem.(abs.(p), 2)
+    return -2 .* parity .+ 1
+end
+
 function triangular(v)
     p = Int.(floor.(v./2 .+ 1/2))
     return (v .- p.*2).*dtri(v)
@@ -230,7 +237,7 @@ function local_search(graph, conf)
     while nonstop
         nonstop = false
         for node in vertices(graph)
-            nonstop |= Dice.majority_flip!(graph, conf, node)
+            nonstop |= majority_flip!(graph, conf, node)
         end
     end
     return conf
@@ -243,7 +250,7 @@ function local_twosearch(graph, conf)
         nonstop = false
         for link in edges(graph)
             if conf[link.src]*conf[link.dst] < 1
-                nonstop |= Dice.majority_twoflip!(graph, conf, link)
+                nonstop |= majority_twoflip!(graph, conf, link)
             end
         end
     end
