@@ -1,7 +1,8 @@
 # Dynamical Ising solver
 #
-# Here, the dynamical variables a regarded from the perspective of the feasible configurations
-# Therefore, the Ising state corresponds to -1, 1, and the period of the main functions is [-2, 2)
+# Here, the dynamical variables are regarded from the perspective of the
+# feasible configurations. # Therefore, the Ising state corresponds to -1, 1,
+# and the period of the main functions is [-2, 2).
 
 # The main functions are F(v) and f = F'(v)
 #
@@ -9,11 +10,13 @@
 #
 # C_G(v) = \sum_{(m,n) \in E} F(v_m - v_n), when v_m ∈ {-1, 1}
 #
-# So that F(0) = 0 (the same partition), F(±2) = 1. Hence, the choice of the period above.
+# So that F(0) = 0 (the same partition), F(±2) = 1. Hence, the period above.
 
 # TODO:
 #   1. Make energy methods for correct energy evaluations
 #   2. Enable LUT-defined methods
+#   3. Add the weight support
+#   4. Implement logging
 
 module Dice
 
@@ -22,11 +25,13 @@ using Arpack
 using LightGraphs
 using SparseArrays
 
-export Model, get_best_cut, get_best_configuration, get_connected, scan_vicinity, scan_for_best_configuration, sine, cut, 
-        triangular, test_branch, get_initial, local_search, local_twosearch
+export Model, get_best_cut, get_best_configuration, get_connected,
+    scan_vicinity, scan_for_best_configuration, sine, cut, 
+    triangular, test_branch, get_initial, local_search, local_twosearch
 
 # The main type describing the Model
-# For a compact description of simulation scenarios and controlling the module behavior
+# For a compact description of simulation scenarios and controlling the
+# module behavior
 const silence_default = 3
 mutable struct Model
     graph::SimpleGraph
@@ -40,13 +45,14 @@ mutable struct Model
     Model(graph, method, scale, Ks, silence) = new(graph, method, scale, Ks, silence)
 end
 
-##################
+##############################
 #
 # Internal service functions
 #
-##################
+##############################
 
 function message(model::Model, out, importance = 1)
+    # must be replaced by a proper logging functionality
     if importance > model.silence
         println("$out ($importance)")
     end
@@ -61,45 +67,128 @@ end
 
 ##############################
 #
+# File support
+#
+##############################
+
+"""
+Read graph in the "reduced" Matrixmarket format.
+
+Usage:
+    G = loadDumpedGraph(filename::String)::SimpleGraph
+
+INPUT:
+    filename::String name of the file
+
+OUTPUT:
+    SimpleGraph object
+
+The reduced format:
+    Header: starting with % lines
+    |V| |E| 
+    u v w_{u,v}
+"""
+function loadDumpedGraph(filename::String)::SimpleGraph
+
+    mtxFile = open(filename, "r")
+    tokens = split(lowercase(readline(mtxFile)))
+    # if tokens[1] == "%%matrixmarket"
+    #     println("NOTE: The data may be of the proper MatrixMarket form.")
+    # end
+
+    # Skip commenting header
+    while tokens[1][1] == '%'
+        global tokens
+        tokens = split(lowercase(readline(mtxFile)))
+    end
+
+    Nodes, Edges = map((x) -> parse(Int64, x), tokens)
+    G = LightGraphs.SimpleGraph(Nodes)
+
+    countEdges = 0
+    for line in readlines(mtxFile)
+        global tokens, countEdges
+        tokens = split(lowercase(line))
+        # we drop the weight for now
+        u, v = map((x) -> parse(Int64, x), tokens[1:2])
+        add_edge!(G, u, v)
+        countEdges += 1
+    end
+    close(mtxFile)
+
+    # if countEdges != Edges
+    #     println("ERROR: the number of provided edges $countEdges does not match the declared$Nodes")
+    # else
+    #     println("The graph was read successfully.")
+    # end
+
+    return G
+end
+
+"""
+    dumpGraph(Graph::SimpleGraph, filename::String)
+
+Writes the sparce adjacency matrix of `Graph` to file `filename`.
+
+NOTE: the current version writes the (0,1) matrix only.
+
+The adjacency matrix is written in the reduced `MatrixMarket` format
+format. The first line contains two numbers: `|V| |E|`
+Next lines contain three numbers: `u v A_{u, v}`
+where `u` and `v` are the nodes numbers and `A_{u, v}` is the edge weight.
+"""
+function dumpGraph(G, filename)
+    weight = 1
+    open(filename, "w") do out
+        println(out, LightGraphs.nv(G), " ", LightGraphs.ne(G))
+        for edge in LightGraphs.edges(G)
+            println(out, edge.src, " ", edge.dst, " ", weight)
+        end
+    end
+end
+
+##############################
+#
 # Common methods for using in evaluating the change rate and the Hamiltonian
 #
 ##############################
 
-function none_method(v)
+function none_method(v)::Float64
     return 0*v  # for the type stability thing
 end
 
-function none_method(v1, v2)
+function none_method(v1, v2)::Float64
     return 0*v1  # for the type stability thing
 end
 
 const Pi2 = pi/2
 const Pi4 = pi/4
 
-function cosine(v) # this is the coupling energy inucing the sine model
+function cosine(v)::Float64
+    # this is the coupling energy inducing the sine model
     return cos.(Pi2.*v)
 end
 
-function sine(v)
+function sine(v)::Float64
     return Pi4.*sin.(Pi2.*v)
 end
 
-function sine(v1, v2)
+function sine(v1, v2)::Float64
     return sine(v1 - v2)
 end
 
-function linear(v1, v2)
+function linear(v1, v2)::Float64
     return v1 - v2
 end
 
-function dtri(v)
+function dtri(v)::Float64
     # the derivative of the triangular function
     p = Int.(floor.(v./2 .+ 1/2))
     parity = rem.(abs.(p), 2)
     return -2 .* parity .+ 1
 end
 
-function triangular(v)
+function triangular(v)::Float64
     # local p::Integer
     # local parity::Integer
     # local envelope::Integer
@@ -107,8 +196,8 @@ function triangular(v)
     return (v .- p.*2).*dtri(v)
 end
     
-function triangular(v1, v2)
-    return triangular(v1-v2)
+function triangular(v1, v2)::Float64
+    return triangular(v1-v2)::Float64
 end
 
 const pwDELTA = 0.1
