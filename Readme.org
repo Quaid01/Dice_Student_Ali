@@ -13,4 +13,6 @@
 
 [[file:dev][dev]] contains the development version of the library
 
-[[file:cases/][cases]] holds particular "releases" (see the description inside)
+[[file:cases/][cases]] holds particular "releases" (see the description inside) and applications
+
+The main page is https://github.com/merement/Dice.git

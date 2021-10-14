@@ -156,7 +156,7 @@ end
 const stW = 0.55*2
 
 function skew_triangular(v)
-    c1 = 1/(stW*(stW - 2))
+    const c1 = 1/(stW*(stW - 2))
 
     vbar = mod.(v .+ 2, 4) .- 2
     s = sign.(vbar)
