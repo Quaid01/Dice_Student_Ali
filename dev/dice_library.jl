@@ -1,7 +1,7 @@
 # Dynamical Ising solver
 #
 # Here, the dynamical variables are regarded from the perspective of the
-# feasible configurations. # Therefore, the Ising state corresponds to -1, 1,
+# feasible configurations. Therefore, the Ising states are {-1, 1}^N,
 # and the period of the main functions is [-2, 2).
 
 # The main functions are F(v) and f = F'(v)
@@ -10,24 +10,34 @@
 #
 # C_G(v) = \sum_{(m,n) \in E} F(v_m - v_n), when v_m ∈ {-1, 1}
 #
-# So that F(0) = 0 (the same partition), F(±2) = 1. Hence, the period above.
+# So that F(0) = 0 (the same partition), F(±2) = -1. Hence, the period above.
 
 # TODO:
 #   1. Make energy methods for correct energy evaluations
+#      Support relaxed objective functions 
 #   2. Enable LUT-defined methods
 #   3. Add the weight support
 #   4. Implement logging
+#   5. Fix the chain of types
+#   6. Admit differenttial equations 
 
 module Dice
 
-using Base: Integer
+using Base:Integer
 using Arpack
 using LightGraphs
 using SparseArrays
 
-export Model, get_best_cut, get_best_configuration, get_connected,
-    scan_vicinity, scan_for_best_configuration, sine, cut, 
-    triangular, test_branch, get_initial, local_search, local_twosearch
+export Model,
+    get_connected,
+    get_initial,
+    sine, triangular,
+    cut, get_best_cut, get_best_configuration, extract_configuration,
+    number_to_conf, 
+    propagate, roundup,
+    test_branch, scan_vicinity, scan_for_best_configuration,
+    conf_decay,
+    local_search, local_twosearch
 
 # The main type describing the Model
 # For a compact description of simulation scenarios and controlling the
@@ -45,13 +55,13 @@ mutable struct Model
     Model(graph, method, scale, Ks, silence) = new(graph, method, scale, Ks, silence)
 end
 
-##############################
+############################################################
 #
-# Internal service functions
+### Internal service functions
 #
-##############################
+############################################################
 
-function message(model::Model, out, importance = 1)
+function message(model::Model, out, importance=1)
     # must be replaced by a proper logging functionality
     if importance > model.silence
         println("$out ($importance)")
@@ -65,11 +75,11 @@ function debug_msg(out)
     end
 end
 
-##############################
+############################################################
 #
-# File support
+### File support
 #
-##############################
+############################################################
 
 """
 Read graph in the "reduced" Matrixmarket format.
@@ -84,18 +94,15 @@ OUTPUT:
     SimpleGraph object
 
 The reduced format:
-    Header: starting with % lines
-    |V| |E| 
+    Header: lines starting with %
+    |V| |E|
     u v w_{u,v}
 """
 function loadDumpedGraph(filename::String)::SimpleGraph
+    # TODO simple validation
 
     mtxFile = open(filename, "r")
     tokens = split(lowercase(readline(mtxFile)))
-    # if tokens[1] == "%%matrixmarket"
-    #     println("NOTE: The data may be of the proper MatrixMarket form.")
-    # end
-
     # Skip commenting header
     while tokens[1][1] == '%'
         global tokens
@@ -105,22 +112,15 @@ function loadDumpedGraph(filename::String)::SimpleGraph
     Nodes, Edges = map((x) -> parse(Int64, x), tokens)
     G = LightGraphs.SimpleGraph(Nodes)
 
-    countEdges = 0
     for line in readlines(mtxFile)
-        global tokens, countEdges
+        global tokens
+        global countEdges
         tokens = split(lowercase(line))
         # we drop the weight for now
         u, v = map((x) -> parse(Int64, x), tokens[1:2])
         add_edge!(G, u, v)
-        countEdges += 1
     end
     close(mtxFile)
-
-    # if countEdges != Edges
-    #     println("ERROR: the number of provided edges $countEdges does not match the declared$Nodes")
-    # else
-    #     println("The graph was read successfully.")
-    # end
 
     return G
 end
@@ -147,71 +147,75 @@ function dumpGraph(G, filename)
     end
 end
 
-##############################
+############################################################
 #
-# Common methods for using in evaluating the change rate and the Hamiltonian
+# Common methods for evaluating the change rate and the Hamiltonian
 #
-##############################
+############################################################
 
-function none_method(v)::Float64
-    return 0*v  # for the type stability thing
+function none_method(v)
+    return 0 * v  # for the type stability thing
 end
 
-function none_method(v1, v2)::Float64
-    return 0*v1  # for the type stability thing
+function none_method(v1, v2)
+    return 0 * v1  # for the type stability thing
 end
 
-const Pi2 = pi/2
-const Pi4 = pi/4
+const Pi2 = pi / 2
+const Pi4 = pi / 4
 
-function cosine(v)::Float64
-    # this is the coupling energy inducing the sine model
-    return cos.(Pi2.*v)
+"""
+    cosine(v)
+
+The coupling energy inducing the XY-model (rank-2 relaxation).
+"""
+function cosine(v)
+    return cos.(Pi2 .* v)
 end
 
-function sine(v)::Float64
-    return Pi4.*sin.(Pi2.*v)
+function sine(v)
+    return sin.(Pi2 .* v)
 end
 
-function sine(v1, v2)::Float64
+function sine(v1, v2)
     return sine(v1 - v2)
 end
 
-function linear(v1, v2)::Float64
+function linear(v1, v2)
     return v1 - v2
 end
 
-function dtri(v)::Float64
+function dtri(v)
     # the derivative of the triangular function
-    p = Int.(floor.(v./2 .+ 1/2))
+    p = Int.(floor.(v ./ 2 .+ 1 / 2))
     parity = rem.(abs.(p), 2)
     return -2 .* parity .+ 1
 end
 
-function triangular(v)::Float64
+function triangular(v)
     # local p::Integer
     # local parity::Integer
     # local envelope::Integer
-    p = Int.(floor.(v./2 .+ 1/2))
-    return (v .- p.*2).*dtri(v)
+    p = Int.(floor.(v ./ 2 .+ 1 / 2))
+    return (v .- p .* 2) .* dtri(v)
 end
-    
-function triangular(v1, v2)::Float64
-    return triangular(v1-v2)::Float64
+
+function triangular(v1, v2)
+    return triangular(v1 - v2)
 end
 
 const pwDELTA = 0.1
-#const pwPERIOD = 4.0
+# const pwPERIOD = 4.0
 
 function piecewise(v)
     Delta = pwDELTA
     vbar = mod.(v .+ 2, 4) .- 2
     s = sign.(vbar)
-    
-    ind = sign.(s.*vbar .- 1)
-    out = Delta.*ind .+ 0.5
-    
-    return s.*out
+
+    ind = sign.(s .* vbar .- 1)
+    out = Delta .* ind .+ 0.5
+
+    return s .* out
 end
 
 function piecewise(v1, v2)
@@ -227,47 +231,51 @@ function square(v1, v2)
 end
 
 function bilinear(v1, v2)
-    return -dtri(v1).*triangular(v2)
+    return -dtri(v1) .* triangular(v2)
 end
 
 function bisine(v1, v2)
-    return -Pi2.*cos(Pi2.*v1).*triangular(Pi2.*v2)
+    return -Pi2 .* cos(Pi2 .* v1) .* triangular(Pi2 .* v2)
 end
 
-function squarishk(v, k = 10)
-    return tanh.(k.*triangular(v))
+function squarishk(v, k=10)
+    return tanh.(k .* triangular(v))
 end
 
-function squarish(v1, v2, k = 10)
+function squarish(v1, v2, k=10)
     return squarishk(v1 - v2, k)
 end
 
-const stW = 0.55*2
+const stW = 0.55 * 2
 
 function skew_triangular(v)
-    const c1 = 1/(stW*(stW - 2))
+    c1 = 1 / (stW * (stW - 2))
 
     vbar = mod.(v .+ 2, 4) .- 2
     s = sign.(vbar)
-    svbar = s.*vbar
+    svbar = s .* vbar
     ind = sign.(svbar .- stW)
 
-    mid = (svbar.*(stW - 1) .- stW).*c1
-    Delta = (svbar .- stW).*c1
+    mid = (svbar .* (stW - 1) .- stW) .* c1
+    Delta = (svbar .- stW) .* c1
 
-    out = Delta.*ind .+ mid
-    return s.*out  
+    out = Delta .* ind .+ mid
+    return s .* out
 end
 
 function skew_triangular(v1, v2)
-    return skew_triangular(v1-v2)
+    return skew_triangular(v1 - v2)
 end
 
-#### Analysis methods
+############################################################
+#
+### Analysis methods
+#
+############################################################
 
 function roundup(V)
-    # returns V rounded into the interval [-2, 2]
-    
+    # returns V folded into the interval [-2, 2]
+
     return mod.(V .+ 2, 4) .- 2
 end
 
@@ -306,7 +314,7 @@ function av_dispersion(graph, V)
     # OUTPUT:
     #   Σ_e |V(a) - V(b)|/|graph|
 
-    return sum([abs(V[edge.src] - V[edge.dst]) for edge in edges(graph)])/nv(graph)
+    return sum([abs(V[edge.src] - V[edge.dst]) for edge in edges(graph)]) / nv(graph)
 end
 
 function c_variance(V, intervals)
@@ -324,8 +332,8 @@ function c_variance(V, intervals)
     for i in 1:(size(out)[1])
         ari = filter(t -> intervals[i,1] < t < intervals[i,2], V)
         ni = length(ari)
-        av = sum(ari)/ni
-        var = sum((ari .- av).^2)/ni
+        av = sum(ari) / ni
+        var = sum((ari .- av).^2) / ni
         out[i, 1] = ni
         out[i, 2] = av
         out[i, 3] = sqrt(var)
@@ -341,9 +349,9 @@ end
 #     #   graph - LightGraphs object
 #     #   conf - configuration array with elemnts \pm 1
 #     #
-#     # OUTPUT: 
+#     # OUTPUT:
 #     #   conf * A * conf /2 energy
-    
+
 #     en = 0
 #     for edge in edges(graph)
 #         en += conf[edge.src]*conf[edge.dst]
@@ -351,34 +359,38 @@ end
 #     return en
 # end
 
+"""
+    cut(graph, conf)
+
+Evaluate the (weighted) cut value for the given graph and binary configuration
+
+INPUT:
+    graph - LightGraphs object
+    conf - binary configuration array with elemnts \pm 1
+OUTPUT:
+    sum_e (1 - e1. e.2)/2
+"""
 function cut(graph, conf)
-    # Evaluates the cut value for the given graph and binary configuration
-    #
-    # INPUT:
-    #   graph - LightGraphs object
-    #   conf - binary configuration array with elemnts \pm 1
-    #
-    # OUTPUT: 
-    #   sum_e (1 - e1. e.2)/2
 
     if nv(graph) != length(conf)
         num = conf_to_number(conf)
         println("ERROR: The configuration $num and the vertex set have different size")
     end
-    
+
     out = 0
     for edge in edges(graph)
-        out += (1 - conf[edge.src]*conf[edge.dst])/2
+        out += (1 - conf[edge.src] * conf[edge.dst]) / 2
     end
     return out
 end
 
 function get_rate(VFull)
-    # Evaluates the magnitude of variations (discrete time derivative) in a 2D array VFull[time, N]
-    # Returns a 1D array of magnitudes with the last element duplicated to keep the same
-    # size as the number of time points in VFull
+    # Evaluates the magnitude of variations (discrete time derivative)
+    # in a 2D array VFull[time, N].
+    # Returns a 1D array of magnitudes with the last element duplicated
+    # to keep the same size as the number of time points in VFull
 
-    out = [sum((VFull[:,i+1] - VFull[:,i]).^2) for i in 1:(size(VFull)[2] - 1)]
+    out = [sum((VFull[:,i + 1] - VFull[:,i]).^2) for i in 1:(size(VFull)[2] - 1)]
     return sqrt.([out; out[end]])
 end
 
@@ -387,19 +399,20 @@ function get_best_rounding(graph, V)
     # Returns the cut, the configuration, and the threshold (t_c)
     #
     # NOTE:
-    #   The algorithm operates with the left boundary of the identifying interval.
-    #   The function extract_configuration, in turn, asks for the rounding center (bad design?).
+    #   The algorithm operates with the left boundary of the identifying
+    #   interval. The function extract_configuration, in turn, asks for the
+    #   rounding center (bad design?).
     #
     # INPUT:
     #   graph
     #   V - array with the voltage distribution assumed to be within [-2, 2]
     #
     # OUTPUT:
-    #   (bestcut, bestbnd)
+    #   (bestcut, bestconf, bestbnd)
     #           where
     #               bestcut - the best cut found
     #               bestconf - rounded configuration
-    #               bestbnd - the position of the respective rounding center (t_c)
+    #               bestbnd - the position of the rounding center (t_c)
 
     Nvert = nv(graph)
 
@@ -408,7 +421,7 @@ function get_best_rounding(graph, V)
     bestconf = zeros(Nvert)
 
     d = 2 # half-width of the interval
-    
+
     vvalues = sort(V)
     push!(vvalues, 2)
     threshold = -2
@@ -436,8 +449,8 @@ function get_best_rounding(graph, V)
             stop += 1
         end
     end
-
-    return (bestcut, bestconf, bestth + 1)  # again, the conversion since the center is expected
+    # bestth is converted since the center is expected
+    return (bestcut, bestconf, bestth + 1)  
 end
 
 function get_best_configuration(graph, V)
@@ -453,7 +466,7 @@ function get_best_configuration(graph, V)
     #           where
     #               bestcut - the best cut found
     #               bestconf - rounded configuration
-    
+
     (becu, beco, beth) = get_best_rounding(graph, V)
     return (becu, beco)
 end
@@ -473,19 +486,19 @@ function get_best_cut(graph, V)
     return becu
 end
 
-#######################
+####################################################
 #
-#          Service methods
+###          Service methods
 #
-#######################
+####################################################
 
 # Patchy Bernoulli generator
-function randspin(p = 0.5)
+function randspin(p=0.5)
     s = rand()
     return s < p ? 1 : -1
 end
 
-function randvector(len::Integer, p = 0.5)
+function randvector(len::Integer, p=0.5)
     # A Bernoulli sequence of length len
     return [randspin(p) for i in 1:len]
 end
@@ -495,12 +508,17 @@ function randnode(nvert)
     return rand(tuple(1:nvert...))
 end
 
-# Generator of transformations producing strings with the fixed Hamming distance from the given one
+# Generator of transformations producing all strings with the fixed
+# Hamming distance from the given one
+#
 # USAGE: hamseq[depth](length)
-# depth is the Hamming distance and length is the number of bits in the string
-# Output is [depth, C]-array of flip indices, where C is the number of strings at the given HD
-# 
-# NOTE: Currently depth is limited by 5
+# `depth` is the Hamming distance
+# `length` is the bitwise length of the string
+#
+# OUTPUT is [depth, C]-array of flip indices,
+# where C is the number of strings at the given HD
+#
+# NOTE: Currently `depth` is limited by 5
 # TODO: make a universal version
 include("hf.jl")
 
@@ -512,7 +530,7 @@ function flipconf(conf, flip)
     #   flip - array with indices where conf should be modified
     #
     # OUTPUT:
-    #   a string at a distance length(flip) from conf
+    #   a string at the H-distance length(flip) from conf
     #
     # Q: isn't this conf[flip] .*= -1?
 
@@ -528,7 +546,7 @@ function majority_flip!(graph, conf, node)
     flip_flag = false
     tot = 0
     for j in neighbors(graph, node)
-        tot += conf[node]*conf[j]
+        tot += conf[node] * conf[j]
     end
     if tot > 0
         conf[node] *= -1
@@ -538,14 +556,16 @@ function majority_flip!(graph, conf, node)
 end
 
 function majority_twoflip!(graph, conf, cut_edge)
-    # Flips a cut pair if the neighborhood of the pair has the wrong kind of majority
+    # Flips a cut pair if the edges adjacent to the cut edge
+    # form the wrong majority
+    # Preserves the node-majority
     flip_flag = false
     tot = 0
     for i in neighbors(graph, cut_edge.src)
-        tot += conf[cut_edge.src]*conf[i]
+        tot += conf[cut_edge.src] * conf[i]
     end
     for i in neighbors(graph, cut_edge.dst)
-        tot += conf[cut_edge.dst]*conf[i]
+        tot += conf[cut_edge.dst] * conf[i]
     end
 
     if tot > -2
@@ -562,57 +582,64 @@ function local_search(graph, conf)
     while nonstop
         nonstop = false
         for node in vertices(graph)
-            nonstop |= Dice.majority_flip!(graph, conf, node)
+            nonstop |= majority_flip!(graph, conf, node)
         end
     end
     return conf
 end
 
 function local_twosearch(graph, conf)
-    # Eliminates pairs breaking the majority rule
+    # Eliminates pairs breaking the edge-majority rule
     nonstop = true
     while nonstop
         nonstop = false
         for link in edges(graph)
-            if conf[link.src]*conf[link.dst] < 1
-                nonstop |= Dice.majority_twoflip!(graph, conf, link)
+            if conf[link.src] * conf[link.dst] < 1
+                nonstop |= majority_twoflip!(graph, conf, link)
             end
         end
     end
     return conf
 end
 
+"""
+    number_to_conf(number, length)
+
+Return `number`-th configuration of a model with `length` spins
+
+This is `number` in the binary representation
+padded with leading zeros to length
+"""
 function number_to_conf(number, length)
-    # Returns number-th configuration
-    # This is pretty much just number in the binary representation padded with leading zeros to length
-    preconf = digits(number, base = 2, pad = length) |> reverse
+    preconf = digits(number, base=2, pad=length) |> reverse
     return 2 .* preconf .- 1
 end
 
 function conf_to_number(conf)
     # Converts conf as a binary number to its decimal representation
-    
-    # TODO: This function is rarely needed, hence the dumb code. I'm not even sure it works correctly
-    #       It must be checked against big-endian/little-endian
-    
-    binconf = (conf .+ 1)./2
-    
+
+    # TODO: This function is rarely needed, hence the dumb code.
+    #        I'm not even sure it works correctly
+    #        It must be checked against big-endian/little-endian
+    binconf = (conf .+ 1) ./ 2
+
     out = 0
     for i = 1:length(binconf)
-        out += binconf[i]*2^(i-1)
+        out += binconf[i] * 2^(i - 1)
     end
-    
+
     return out
 end
 
-function extract_configuration(V::Array, threshold) #, width = 2)
+function extract_configuration(V::Array, threshold) # , minimal = false
     # Binarizes V according to the threshold
     # In the modular form, the mapping looks like
     #
     # V ∈ [threshold, threshold + width] -> C_1
     # V ∈ [threshold - width, threshold] -> C_2
     #
-    # On top of this, we use the global sign inversion symmetry
+    # OPTION: On top of this, we use the global sign inversion
+    #          symmetry (disabled, untested)
     #
     # INPUT:
     #   V - data array (is presumed to be rounded and within [-2, 2])
@@ -620,7 +647,7 @@ function extract_configuration(V::Array, threshold) #, width = 2)
     #   width - (TODO: the width of the central interval)
     #
     # OUTPUT:
-    #   size(V) array with elements + 1 and -1 depending on the relation of 
+    #   size(V) array with elements + 1 and -1 depending on the relation of
     #           the respective V elements with threshold
 
     width = 1 # half-width of the rounding interval
@@ -628,23 +655,29 @@ function extract_configuration(V::Array, threshold) #, width = 2)
     # if sum(abs.(V))/length(V) > 2
     #     println("Error: V value is out of bounds")
     # end
-    
+
     if abs(threshold) <= 1
-        inds = threshold - width .<= V .< threshold + width 
+        inds = threshold - width .<= V .< threshold + width
     else
-        return -extract_configuration(V, threshold - 2*sign(threshold))
+        return -extract_configuration(V, threshold - 2 * sign(threshold))
     end
     out = 2 .* inds .- 1
-    
+
     # # if we want the outcome with smaller total displacement
-    # if sum(abs.(V .+ out)) < sum(abs.(V .- out))
+    # if minimal && sum(abs.(V .+ out)) < sum(abs.(V .- out))
     #     out .*= -1
     # end
     return out
 end
 
 function get_connected(Nvert, prob)
-    # Generates a connected graph with Nvert vertices and prob density of edges
+    # Generates a connected graph with `Nvert` vertices and
+    # `prob` density of edges
+    # A bit more precisely. On the set of edges of a complete graph
+    # K_{Nvert}, we have a (Bernoulli process) function F, which takes
+    # values 1 and 0 with probabilities prob and 1 - prob, respectively.
+    # The output graph is a connected subgraph of K_{Nvert} with
+    # only edges where F = 1 kept in the set of edges.
     cnct = false
     G = Graph()
     while !cnct
@@ -655,38 +688,50 @@ function get_connected(Nvert, prob)
 end
 
 function get_initial(Nvert::Integer, (vmin, vmax))
-    # Generate random vector with Nvert components uniformly distributed in the (vmin, vmax) intervals
+    # Generate random vector with Nvert components uniformly distributed
+    # in the (vmin, vmax) interval
 
     bot, top = minmax(vmin, vmax)
     mag = top - bot
 
-    return mag.*rand(Float64, Nvert) .+ bot
+    return mag .* rand(Float64, Nvert) .+ bot
 end
 
-####################
+
+##########################################################
 #
-#   Dynamics methods
+###   Dynamics methods
 #
-#####################
+##########################################################
+
 
 function step_rate(graph::SimpleGraph, methods::Array{Function}, V::Array, Ks::Float64)
     # Evaluates ΔV for a single step
-    # This version takes an array of methods for exploratory simulations
+    # This version takes an array of methods evaluating coupling
+    # and local energies
     #
     # INPUT:
-    #    graph - unweighted graph carrying V's (TODO: allow for weights)
+    #    `graph` - unweighted graph carrying V's
     #
-    #    methods - array of methods to evaluate different contributions
-    #               The anisotropy method takes only one variable
+    #    `methods`
+    #         list with two functions evaluating different contributions
+    #         to the equations of motion:
     #
-    #   V(1:|graph|) - current distribution of dynamical variables
+    #         methods[1](V_1, V_2)
+    #                 contribution to the rate due to "coupling"
+    #                 between V_1 and V_2
     #
-    #    Ks - anisotropy constant
+    #         methods[2](V)
+    #                 local contribution (anisotropy)
+    #            
+    #    V(1:|graph|) - current distribution of dynamical variables
+    #
+    #    Ks - the anisotropy constant
     #
     # OUTPUT:
     #   ΔV(1:|graph|) - array of increments
 
-    out = Ks.*methods[2](2.0.*V)
+    out = Ks .* methods[2](V)
     for node in vertices(graph)
         Vnode = V[node]
 
@@ -699,11 +744,18 @@ end
 
 function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
     # Evaluates ΔV for a single step
-    # This version presumes that there is a single method for coupling and anisotropy
-    # and that there is only easy-axis anisotropy
+    # This version presumes that there is a single method for coupling and
+    # anisotropy and that there is only easy-axis anisotropy
+    #
+    # This is a hacky function (see how the anisotropy is evaluated
+    # using method(V, -V)). It should be used with care as the
+    # implemented idea of a "single method" is flawed. A true single
+    # method would imply the presence of a field (a fixed
+    # vertex). Here, however, the "single method" is used for
+    # anisotropy, which presumes a tensor.
     #
     # INPUT:
-    #    graph - unweighted graph carrying V's (TODO: allow for weights)
+    #    graph - unweighted graph carrying V's 
     #    method - method to evaluate different contributions
     #   V(1:|graph|) - current distribution of dynamical variables
     #    Ks - anisotropy constant
@@ -711,7 +763,7 @@ function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
     # OUTPUT:
     #   ΔV(1:|graph|) - array of increments
 
-    out = Ks.*method(V, -V)
+    out = Ks .* method(V, -V)
     for node in vertices(graph)
         Vnode = V[node]
 
@@ -723,7 +775,9 @@ function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
 end
 
 function trajectories(graph, methods::Array{Function}, Ks, scale, duration, Vini)
-    # Advances the graph duration - 1 steps forward taking an array of methods passed further down
+    # Advances the graph ()duration - 1) steps forward taking an array
+    # of methods passed further down
+    #
     # This is the verbose version, which returns the full dynamics
     #
     # scale - parameter to tweak the dynamics
@@ -732,17 +786,17 @@ function trajectories(graph, methods::Array{Function}, Ks, scale, duration, Vini
     #
     # OUTPUT:
     #   VFull = [V(0) V(1) ... V(duration-1)]
-       
+
     VFull = Vini
     V = Vini
-    
+
     tran = 1:(duration - 1)
     for tau in tran
-        ΔV = scale.*step_rate(graph, methods, V, Ks)
+        ΔV = scale .* step_rate(graph, methods, V, Ks)
         V += ΔV
         VFull = [VFull V]
     end
-            
+
     return VFull
 end
 
@@ -751,23 +805,23 @@ function trajectories(graph, method::Function, Ks, scale, duration, Vini)
     # Advances the graph duration - 1 steps forward
     # This is the verbose version, which returns the full dynamics
     #
-    # scale - parameter to tweak the dynamics (TODO: make a version with an ODE solver)
+    # scale - parameter to tweak the dynamics
     # duration - how many time points to evaluate
     # V0 - the initial conditions
     #
     # OUTPUT:
     #   VFull = [V(0) V(1) ... V(duration-1)]
-       
+
     VFull = Vini
     V = Vini
-    
+
     tran = 1:(duration - 1)
     for tau in tran
-        ΔV = scale.*step_rate(graph, method, V, Ks)
+        ΔV = scale .* step_rate(graph, method, V, Ks)
         V += ΔV
         VFull = [VFull V]
     end
-            
+
     return VFull
 end
 
@@ -775,20 +829,20 @@ function propagate(graph, method::Function, Ks, scale, duration, Vini)
     # Advances the graph duration - 1 steps forward
     # This is the short version, which returns only the final state vector
     #
-    # scale - parameter to tweak the dynamics (TODO: make a version with an ODE solver)
+    # scale - parameter to tweak the dynamics
     # duration - how many time points to evaluate
     # Vini - the initial conditions
     #
     # OUTPUT:
     #   [V[1] .. V[nv(graph)] at t = duration - 1
-       
+
     V = Vini
 
     for tau in 1:(duration - 1)
-        ΔV = scale.*step_rate(graph, method, V, Ks)
+        ΔV = scale .* step_rate(graph, method, V, Ks)
         V += ΔV
     end
-            
+
     return V
 end
 
@@ -802,25 +856,26 @@ function propagate(model::Model, duration, Vini)
     #
     # OUTPUT:
     #   [V[1] .. V[nv(graph)] at t = duration - 1
-       
+
     V = Vini
     graph = model.graph
     method = model.method
     Ks = model.Ks
     scale = model.scale
-    
+
     for tau in 1:(duration - 1)
-        ΔV = scale.*step_rate(graph, method, V, Ks)
+        ΔV = scale .* step_rate(graph, method, V, Ks)
         V += ΔV
     end
-            
+
     return V
 end
 
 function propagateAdaptively(model::Model, duration, Vini)
-    # Advances the model::Model at most duration - 1 steps forward with an adaptive time scale
+    # Advances the model::Model at most duration - 1 steps forward
+    # with an adaptive time scale
     #
-    #########    NOTE: the current state is unreliable (under construction)!!!     #########
+    #####    NOTE: the current state is under construction!!!     ######
     #
     # Returns only the final state vector
     #
@@ -834,7 +889,7 @@ function propagateAdaptively(model::Model, duration, Vini)
     tauconst = 0.6
     cconst = 0.5
     excconst = 10 # how many upscales over the initial one are allowed
-       
+
     V = Vini
     graph = model.graph
     method = model.method
@@ -848,39 +903,39 @@ function propagateAdaptively(model::Model, duration, Vini)
         exccount = 0 # upscales counter
         grad  = step_rate(graph, method, V, model.Ks)
 
-        ΔV = scale.*grad
+        ΔV = scale .* grad
         grad2 = sum(grad .* grad)
-        bestshift = grad2*scale*cconst
+        bestshift = grad2 * scale * cconst
 
         candEnergy = energy(graph, method, V + ΔV)
 
-        dEr = abs(candEnergy - curEnergy)/(1 + abs(curEnergy))
-        if  ( bestshift <= 1e-5)
-            #debug_msg("Saturation exit at tau = $tau with |dV| = $(sqrt(sum(ΔV.*ΔV))), dEr = $dEr , Enew = $candEnergy, Eold = $curEnergy, grad2 = $grad2, and scale = $scale")
+        dEr = abs(candEnergy - curEnergy) / (1 + abs(curEnergy))
+        if ( bestshift <= 1e-5)
+            debug_msg("Saturation exit at tau = $tau with |dV| = $(sqrt(sum(ΔV .* ΔV))), dEr = $dEr , Enew = $candEnergy, Eold = $curEnergy, grad2 = $grad2, and scale = $scale")
             break
         end
 
-        while candEnergy > curEnergy + bestshift*0.01 && exccount <= excconst
+        while candEnergy > curEnergy + bestshift * 0.01 && exccount <= excconst
             scale *= tauconst
-            ΔV = scale.*grad
+            ΔV = scale .* grad
             candEnergy = energy(graph, method, V + ΔV)
             exccount += 1
         end
 
-        #if exccount <= 2
-            scale = min(model.scale, 2*scale)
-        #end
+        # if exccount <= 2
+        scale = min(model.scale, 2 * scale)
+        # end
 
         # if candEnergy > curEnergy
         #     exccount += 1
-        #     if exccount > excconst 
+        #     if exccount > excconst
         #         println("Upscales limit is exceeded at tau = $tau")
         #         break
         #     end
         #     scale *= tauconst
         # elseif candEnergy > curEnergy - bestshift
         #     V += ΔV
-        # else 
+        # else
         #     while candEnergy < curEnergy - bestshift
         #         exccount -= 1
         #         scale /= tauconst
@@ -901,16 +956,16 @@ end
 
 function energy(graph, method::Function, V::Array)
     # Evaluates the coupling energy corresponding to V
-    # Note: this is essential that this energy evaluates only the coupling energy without 
+    # Note: this is essential that this energy evaluates only the coupling energy without
     #       any anisotropic terms
     #
     #####            NOTE: It's broken as of now! Need to pass the correct method
     #
     # INPUT:
     #   method here is the energy of the elementary one-edge graph. Of course, this is
-    #          not the same method as in the propagation functions (that woould be the minus 
+    #          not the same method as in the propagation functions (that woould be the minus
     #          gradient of the method passed to this function)
-    
+
     en = 0
     for edge in edges(graph)
         en += cosine(V[edge.src] - V[edge.dst])
@@ -919,9 +974,13 @@ function energy(graph, method::Function, V::Array)
     return en
 end
 
-#### Simulation
+############################################################
+#
+### Simulation
+#
+############################################################
 
-function conf_decay(graph, conf::Array, listlen = 3)
+function conf_decay(graph, conf::Array, listlen=3)
     # Evaluates the eigenvalue and eigenvector of the most unstable excitation in configuration conf
     #
     # According to configuration conf, we divide graph into two induced subgraphs (isg) and a bipartite graph (big)
@@ -930,23 +989,23 @@ function conf_decay(graph, conf::Array, listlen = 3)
     #
     # INPUT:
     #   graph
-    #   conf - a string with configuration encoded in 
+    #   conf - a string with configuration encoded in
     #   listlen - how many eigenvalues to be returned
     #
     # OUTPUT:
     # lambda, v - eigenvalue and eigenvector
-    
+
     NVert = nv(graph)
     if NVert !== length(conf)
         throw(Error("The configuration legnth does not match the size of the graph"))
     end
 
     L = laplacian_matrix(graph)
-    
+
     D = zeros(NVert, 1) # to collect sums of rows
-    
-    for (i,j) in zip(findnz(L)...)
-        L[i,j] *= conf[i]*conf[j]
+
+    for (i, j) in zip(findnz(L)...)
+        L[i,j] *= conf[i] * conf[j]
         if i != j
             D[i] += L[i,j]
         end
@@ -956,12 +1015,12 @@ function conf_decay(graph, conf::Array, listlen = 3)
     for i in 1:NVert
         L[i,i] = -D[i]
     end
-    
+
     out = eigs(L, nev=listlen, which=:LR)[1]
     return out[1:listlen]
 end
 
-function conf_decay_states(graph, conf::Array, listlen = 3)
+function conf_decay_states(graph, conf::Array, listlen=3)
     # Evaluates the eigenvalue and eigenvector of the most unstable excitation in configuration conf
     #
     # According to configuration conf, we divide graph into two induced subgraphs (isg) and a bipartite graph (big)
@@ -970,22 +1029,22 @@ function conf_decay_states(graph, conf::Array, listlen = 3)
     #
     # INPUT:
     #   graph
-    #   conf - a string with configuration encoded in 
+    #   conf - a string with configuration encoded in
     #   listlen - how many eigenvalues to be returned
     #
     # OUTPUT:
     # lambda, v - eigenvalue and eigenvector
-    
+
     NVert = nv(graph)
     if NVert !== length(conf)
         throw(Error("The configuration length does not match the size of the graph"))
     end
 
     L = laplacian_matrix(graph)
-    
+
     D = zeros(NVert, 1) # to collect sums of rows
-    for (i,j) in zip(findnz(L)...)
-        L[i,j] *= conf[i]*conf[j]
+    for (i, j) in zip(findnz(L)...)
+        L[i,j] *= conf[i] * conf[j]
         if i != j
             D[i] += L[i,j]
         end
@@ -995,7 +1054,7 @@ function conf_decay_states(graph, conf::Array, listlen = 3)
     for i in 1:NVert
         L[i,i] = -D[i]
     end
-    
+
     eigvalue, eigvector = eigs(L, nev=1, which=:LR)
     return (eigvalue, eigvector)
 end
@@ -1004,7 +1063,7 @@ function scan_for_best_configuration(model::Model, Vc::Array, domain::Float64, t
     # Scans a vicinity of Vc with size given by domain in the "Monte Carlo style"
     #
     # Ninitial number of random initial conditions with individual amplitudes varying between ±domain
-    
+
     G = model.graph
     Nvert = nv(G)
 
@@ -1013,12 +1072,12 @@ function scan_for_best_configuration(model::Model, Vc::Array, domain::Float64, t
     for i in 1:Ninitial
         local cucu::Integer
 
-        Vi = domain.*get_initial(Nvert,(-1,1)) 
+        Vi = domain .* get_initial(Nvert, (-1, 1))
         Vi .+= Vc;
         Vi[rand((1:Nvert))] *= -1.1  # a random node is flipped as a perturbation
-        #Vi .-= sum(Vi)/Nvert
+        # Vi .-= sum(Vi)/Nvert
 
-        #VF = propagateAdaptively(model, tmax, Vi);
+        # VF = propagateAdaptively(model, tmax, Vi);
         VF = propagate(model, tmax, Vi);
 
         (cucu, cuco) = get_best_configuration(G, roundup(VF))
@@ -1028,7 +1087,7 @@ function scan_for_best_configuration(model::Model, Vc::Array, domain::Float64, t
         end
 
         if cucu > bcut
-            #println("Improvement by $(cucu - bcut)")
+            # println("Improvement by $(cucu - bcut)")
             bcut = cucu
             bconf = cuco
             Vc = bconf
@@ -1049,7 +1108,7 @@ function test_branch(model, Vstart, domain, tmax, Ni, max_depth)
     #   max_depth   - the maximal depth
 
     local bcut::Integer, bconf::Array{Integer}, stepcount::Integer, nextflag::Bool
-    
+
     Nvert = nv(model.graph)
 
     nextflag = true
@@ -1067,18 +1126,18 @@ function test_branch(model, Vstart, domain, tmax, Ni, max_depth)
         message(model, "Prelocal cut = $cucut", 2)
         cuconf = local_search(model.graph, cuconf)
         message(model, "Post-local cut = $(cut(model.graph, cuconf))", 2)
-        
+
         cuconf = local_twosearch(model.graph, cuconf)
         cucut = cut(model.graph, cuconf)
         message(model, "Post-local-2 cut = $cucut", 2)
         if cucut > bcut
             bcut = cucut
-            message(model, 
+            message(model,
                     "Step $stepcount arrived at $bcut with the displacement $(HammingD(cuconf, bconf))", 2)
             bconf = cuconf
             Vcentral = cuconf
 
-            #domain *= 0.9
+            # domain *= 0.9
             Ni += 10
         else
             nextflag = false

@@ -1,8 +1,7 @@
 * Spectra, instabilities and max-cuts
 
-=spectra-instabilities-cuts.ipynb= --- Julia notebook with the code used for
-preparing the figure showing the variation of instabilities in connected
-Erdos-Renyi graphs.
+=m8-degradation.jl= --- the code used for preparing the figure showing
+the variation of instabilities in connected Erdos-Renyi graphs.
 
 =small_success_anisotropy.ipynb= --- the notebook for the numerical analysis of a
 small graph: three dynamical regimes and the success probability. 
