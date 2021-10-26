@@ -291,14 +291,18 @@ function HammingD(s1, s2)
     return count
 end
 
+"""
+    EuclidD(V1, V2)
+
+Evaluate the Euclidean distance between two distributions
+
+INPUT:
+  `V1`, `V2` - two arrays on the graph vertices
+
+OUTPUT:
+  \Sum_v (V_1(v) - V_2(v))^2
+"""
 function EuclidD(V1, V2)
-    # Evaluates the Euclidean distance between two distributions
-    #
-    # INPUT:
-    #   V1, V2 - two arrays on the graph vertices
-    #
-    # OUTPUT:
-    #   Σ_v (V_1(v) - V_2(v))^2
 
     return sum((V1 .- V2).^2)
 end
@@ -394,25 +398,29 @@ function get_rate(VFull)
     return sqrt.([out; out[end]])
 end
 
+"""
+    get_best_rounding(graph, V)
+
+Find the best cut following the CirCut algorithm
+Return the cut, the configuration, and the threshold (t_c)
+
+INPUT:
+  graph
+  V - array with the voltage distribution assumed to be within [-2, 2]
+
+OUTPUT:
+  (bestcut, bestconf, bestbnd)
+          where
+              bestcut - the best cut found
+              bestconf - rounded configuration
+              bestbnd - the position of the rounding center (t_c)
+
+Implementation note:
+  The algorithm operates with the left boundary of the identifying
+  interval. The function `extract_configuration`, in turn, asks for the
+  rounding center.
+"""
 function get_best_rounding(graph, V)
-    # Finds the best cut following the CirCut algorithm
-    # Returns the cut, the configuration, and the threshold (t_c)
-    #
-    # NOTE:
-    #   The algorithm operates with the left boundary of the identifying
-    #   interval. The function extract_configuration, in turn, asks for the
-    #   rounding center (bad design?).
-    #
-    # INPUT:
-    #   graph
-    #   V - array with the voltage distribution assumed to be within [-2, 2]
-    #
-    # OUTPUT:
-    #   (bestcut, bestconf, bestbnd)
-    #           where
-    #               bestcut - the best cut found
-    #               bestconf - rounded configuration
-    #               bestbnd - the position of the rounding center (t_c)
 
     Nvert = nv(graph)
 
