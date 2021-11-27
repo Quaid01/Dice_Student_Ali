@@ -13,6 +13,7 @@
 # So that F(0) = 0 (the same partition), F(±2) = -1. Hence, the period above.
 
 # TODO:
+#   0. Fix rounding
 #   1. Make energy methods for correct energy evaluations
 #      Support relaxed objective functions 
 #   2. Enable LUT-defined methods
@@ -273,6 +274,11 @@ end
 #
 ############################################################
 
+"""
+    roundup(V)
+
+Return `V` folded into [-2, 2].
+"""
 function roundup(V)
     # returns V folded into the interval [-2, 2]
 
@@ -300,7 +306,7 @@ INPUT:
   `V1`, `V2` - two arrays on the graph vertices
 
 OUTPUT:
-  \Sum_v (V_1(v) - V_2(v))^2
+      Sum_v (V_1(v) - V_2(v))^2
 """
 function EuclidD(V1, V2)
 
@@ -370,7 +376,7 @@ Evaluate the (weighted) cut value for the given graph and binary configuration
 
 INPUT:
     graph - LightGraphs object
-    conf - binary configuration array with elemnts \pm 1
+    conf - binary configuration array with elemnts ± 1
 OUTPUT:
     sum_e (1 - e1. e.2)/2
 """
@@ -443,6 +449,7 @@ function get_best_rounding(graph, V)
     while threshold < 0
         # here, we convert the tracked left boundary to the rounding center
         conf = extract_configuration(V, threshold + 1)
+        # TODO: cut should be evaluated only once. After that only increments are needed
         cucu = cut(graph, conf)
         if cucu > bestcut
             bestcut = cucu
@@ -660,10 +667,6 @@ function extract_configuration(V::Array, threshold) # , minimal = false
 
     width = 1 # half-width of the rounding interval
 
-    # if sum(abs.(V))/length(V) > 2
-    #     println("Error: V value is out of bounds")
-    # end
-
     if abs(threshold) <= 1
         inds = threshold - width .<= V .< threshold + width
     else
@@ -679,9 +682,9 @@ function extract_configuration(V::Array, threshold) # , minimal = false
 end
 
 function get_connected(Nvert, prob)
-    # Generates a connected graph with `Nvert` vertices and
+    # Generate a connected Erdos-Renyi graph with `Nvert` vertices and
     # `prob` density of edges
-    # A bit more precisely. On the set of edges of a complete graph
+    # More precisely. On the set of edges of a complete graph
     # K_{Nvert}, we have a (Bernoulli process) function F, which takes
     # values 1 and 0 with probabilities prob and 1 - prob, respectively.
     # The output graph is a connected subgraph of K_{Nvert} with
