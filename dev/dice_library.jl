@@ -13,7 +13,7 @@
 # So that F(0) = 0 (the same partition), F(±2) = -1. Hence, the period above.
 
 # TODO:
-#   0. Fix rounding
+#   0. [DONE] Fix rounding
 #   1. Make energy methods for correct energy evaluations
 #      Support relaxed objective functions 
 #   2. Enable LUT-defined methods
@@ -198,7 +198,9 @@ function triangular(v)
     # local parity::Integer
     # local envelope::Integer
     p = Int.(floor.(v ./ 2 .+ 1 / 2))
-    return (v .- p .* 2) .* dtri(v)
+    parity = rem.(abs.(p), 2)
+#    return (v .- p .* 2) .* dtri(v)
+    return (v .- p .* 2) .* (-2 .* parity .+ 1)
 end
 
 function triangular(v1, v2)
@@ -247,6 +249,7 @@ function squarish(v1, v2, k=10)
     return squarishk(v1 - v2, k)
 end
 
+# this really should be a model parameter
 const stW = 0.55 * 2
 
 function skew_triangular(v)
@@ -267,6 +270,14 @@ end
 function skew_triangular(v1, v2)
     return skew_triangular(v1 - v2)
 end
+
+function continuous_model_1(v1, v2)
+    return -dtri(v1).*triangular(v2)
+end
+
+# function continuous_model_a(v1, v2)
+#     return -dtri(v1).*triangular(v2)
+# end
 
 ############################################################
 #
@@ -407,7 +418,7 @@ end
 """
     get_best_rounding(graph, V)
 
-Find the best cut following the CirCut algorithm
+Find the best rounding (inspired by the CirCut algorithm)
 Return the cut, the configuration, and the threshold (t_c)
 
 INPUT:
@@ -429,43 +440,57 @@ Implementation note:
 function get_best_rounding(graph, V)
 
     Nvert = nv(graph)
+    # half-width of the interval
+    # or the width of the rounding interval
+    d = 2 
 
-    bestcut = -1
-    bestth = -2
-    bestconf = zeros(Nvert)
+    sorting = sortperm(V)
+    vvalues = V[sorting]
+    # we uniformly shift all points until they start from 0
+    vvalues .-= vvalues[1]
+    push!(vvalues, 2) # a formal end point
 
-    d = 2 # half-width of the interval
-
-    vvalues = sort(V)
-    push!(vvalues, 2)
-    threshold = -2
+    left = -2
+    bestcenter = -1 # left + d/2
 
     start = 1
     stop = findfirst(t -> t > 0, vvalues)
-    if isnothing(stop) # there's no such element
+    if isnothing(stop) # there's no such element, all points are in [-2, 0]
         stop = Nvert + 1
     end
+    conf = extract_configuration(V, bestcenter)
+    bestcut = cut(graph, conf)
 
-    while threshold < 0
-        # here, we convert the tracked left boundary to the rounding center
-        conf = extract_configuration(V, threshold + 1)
-        # TODO: cut should be evaluated only once. After that only increments are needed
-        cucu = cut(graph, conf)
-        if cucu > bestcut
-            bestcut = cucu
-            bestth = threshold
-            bestconf = conf
-        end
+    while left < 0
+        # which side of the rounding interval meets the next point
+        # if vvalues[start] - left <= vvalues[stop] - (left + d) then left
         if vvalues[start] <= vvalues[stop] - d
-            threshold = vvalues[start]
+            flipped = sorting[start] # the true index of the flipped spin
+            left = vvalues[start]
             start += 1
         else
-            threshold = vvalues[stop] - d
+            if stop > Nvert # trying to flip the formal point = the end
+                break
+            end
+            flipped = sorting[stop]
+            left = vvalues[stop] - d
             stop += 1
         end
+
+        # Now, we evaluate the cut variation
+        tot = 0
+        # tot = d_{uncut} - d_{cut}
+        for j in neighbors(graph, flipped)
+            tot += conf[flipped]*conf[j]
+        end
+        if tot > 0
+            bestcut += 2*tot
+            bestcenter = left + d/2
+        end
     end
-    # bestth is converted since the center is expected
-    return (bestcut, bestconf, bestth + 1)  
+
+    bestconf = extract_configuration(V, bestcenter)
+    return (bestcut, bestconf, bestcenter)  
 end
 
 function get_best_configuration(graph, V)
@@ -593,6 +618,8 @@ end
 
 function local_search(graph, conf)
     # Eliminates vertices breaking the majority rule
+    # Attention, it changes conf
+    # TODO It's ideologically off
     nonstop = true
     while nonstop
         nonstop = false
@@ -601,6 +628,17 @@ function local_search(graph, conf)
         end
     end
     return conf
+end
+
+function local_search!(graph, conf)
+    # Eliminates vertices breaking the majority rule
+    nonstop = true
+    while nonstop
+        nonstop = false
+        for node in vertices(graph)
+            nonstop |= majority_flip!(graph, conf, node)
+        end
+    end
 end
 
 function local_twosearch(graph, conf)
@@ -615,6 +653,19 @@ function local_twosearch(graph, conf)
         end
     end
     return conf
+end
+
+function local_twosearch!(graph, conf)
+    # Eliminates pairs breaking the edge-majority rule
+    nonstop = true
+    while nonstop
+        nonstop = false
+        for link in edges(graph)
+            if conf[link.src] * conf[link.dst] < 1
+                nonstop |= majority_twoflip!(graph, conf, link)
+            end
+        end
+    end
 end
 
 """
