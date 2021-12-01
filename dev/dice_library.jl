@@ -430,36 +430,29 @@ OUTPUT:
           where
               bestcut - the best cut found
               bestconf - rounded configuration
-              bestbnd - the position of the rounding center (t_c)
-
-Implementation note:
-  The algorithm operates with the left boundary of the identifying
-  interval. The function `extract_configuration`, in turn, asks for the
-  rounding center.
+              bestleft - the left boundary of the rounding interval
 """
 function get_best_rounding(graph, V)
 
     Nvert = nv(graph)
-    # half-width of the interval
-    # or the width of the rounding interval
+    # the width of the rounding interval
     d = 2 
 
     sorting = sortperm(V)
     vvalues = V[sorting]
-    # we uniformly shift all points until they start from 0
-    vvalues .-= vvalues[1]
     push!(vvalues, 2) # a formal end point
 
     left = -2
-    bestcenter = -1 # left + d/2
-
+    bestleft = left
+    
     start = 1
     stop = findfirst(t -> t > 0, vvalues)
     if isnothing(stop) # there's no such element, all points are in [-2, 0]
         stop = Nvert + 1
     end
-    conf = extract_configuration(V, bestcenter)
-    bestcut = cut(graph, conf)
+    runconf = round_configuration(V, bestleft)
+    runcut = cut(graph, runconf)
+    bestcut = runcut
 
     while left < 0
         # which side of the rounding interval meets the next point
@@ -478,19 +471,17 @@ function get_best_rounding(graph, V)
         end
 
         # Now, we evaluate the cut variation
-        tot = 0
-        # tot = d_{uncut} - d_{cut}
         for j in neighbors(graph, flipped)
-            tot += conf[flipped]*conf[j]
+            runcut += runconf[flipped]*runconf[j]
         end
-        if tot > 0
-            bestcut += 2*tot
-            bestcenter = left + d/2
+        # And update the configuration
+        runconf[flipped] *= -1 
+        if runcut > bestcut
+            bestcut = runcut
+            bestleft = left
         end
     end
-
-    bestconf = extract_configuration(V, bestcenter)
-    return (bestcut, bestconf, bestcenter)  
+    return (bestcut, bestconf, bestleft)
 end
 
 function get_best_configuration(graph, V)
@@ -502,7 +493,7 @@ function get_best_configuration(graph, V)
     #   V - array with the voltage distribution assumed to be within [-2, 2]
     #
     # OUTPUT:
-    #   (bestcut, bestbnd)
+    #   (bestcut, bestconf)
     #           where
     #               bestcut - the best cut found
     #               bestconf - rounded configuration
@@ -697,20 +688,59 @@ function conf_to_number(conf)
     return out
 end
 
-function extract_configuration(V::Array, threshold) # , minimal = false
+
+"""
+    round_configuration(V::Array, leftstop)
+
+Maps the supplied configuration to a binary one.
+The values in (leftstop + 2] are mapped to +1, the rest are mapped to -1.
+
+INPUT:
+    V - data array 
+    leftstop - the left boundary of the rounding interval
+
+OUTPUT:
+    conf - a binary array {-1, 1}^N, where N = length(V)
+
+NOTE:
+The function looks for points inside (L + 2], where L is chosen such
+that there is no wrapping of the rounding interval. This is determined
+by whether leftstop + 2 <= 2 or not. Thus, if leftstop < 0, then
+L = leftstop, otherwise L = leftstop - 2 and the points inside (L + 2]
+are mapped to -1, while the rest are mapped to 1.
+
+NOTE #2:
+The rounding interval (which bound is open and which is closed) is changed
+compared to the legacy version.
+"""
+function round_configuration(V::Array, leftstop)
+    # the width of the rounding interval
+    width = 2
+    L = leftstop
+
+    conf = ones(length(V))
+    # We don't want to deal with wrapping
+    if L < 0
+        conf = -conf
+    else
+        L -= 2
+    end
+    inds = L .< V .<= L + width
+    conf[inds] .*= -1
+    return conf
+end
+
+function extract_configuration(V::Array, threshold)
     # Binarizes V according to the threshold
     # In the modular form, the mapping looks like
     #
     # V ∈ [threshold, threshold + width] -> C_1
     # V ∈ [threshold - width, threshold] -> C_2
     #
-    # OPTION: On top of this, we use the global sign inversion
-    #          symmetry (disabled, untested)
     #
     # INPUT:
     #   V - data array (is presumed to be rounded and within [-2, 2])
     #   threshold - the rounding center
-    #   width - (TODO: the width of the central interval)
     #
     # OUTPUT:
     #   size(V) array with elements + 1 and -1 depending on the relation of
@@ -724,11 +754,6 @@ function extract_configuration(V::Array, threshold) # , minimal = false
         return -extract_configuration(V, threshold - 2 * sign(threshold))
     end
     out = 2 .* inds .- 1
-
-    # # if we want the outcome with smaller total displacement
-    # if minimal && sum(abs.(V .+ out)) < sum(abs.(V .- out))
-    #     out .*= -1
-    # end
     return out
 end
 
