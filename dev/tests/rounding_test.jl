@@ -9,7 +9,7 @@ include(Dice_PATH * "dice_library.jl")
 listBatches = "batches.list"
 strMethod = "triangular"
 # The path to the data-bank
-DATA_PATH = "~/umich.edu/science/current/QA/IM/theory/numerics/numerics.jl/studies/scaling.sloppy/"
+DATA_PATH = "/home/misha/umich.edu/science/current/QA/IM/theory/numerics/numerics.jl/studies/scaling.sloppy/"
 println("Init complete")
 
 const tmax = 50      # the number of steps within one realization
@@ -40,15 +40,15 @@ function almost_eq(a, b)
 end
 
 count = 0
-for batch in readlines(listBatches)
+for batch in readlines(DATA_PATH * listBatches)
     global count
     if count > 180
         break
     end
     count += 1
     
-    for sample in readlines(batch * "/sample.list")
-        Gcur = Dice.loadDumpedGraph(sample)
+    for sample in readlines(DATA_PATH * batch * "/sample.list")
+        Gcur = Dice.loadDumpedGraph(DATA_PATH * sample)
         Nvert = nv(Gcur)
         model = Dice.Model(Gcur, Dice.triangular, 30 / Nvert, 0.00001)
 

@@ -481,7 +481,7 @@ function get_best_rounding(graph, V)
             bestleft = left
         end
     end
-    return (bestcut, bestconf, bestleft)
+    return (bestcut, round_configuration(V, bestleft), bestleft)
 end
 
 function get_best_configuration(graph, V)
