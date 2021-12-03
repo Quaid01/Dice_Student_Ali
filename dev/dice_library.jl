@@ -26,7 +26,7 @@ module Dice
 
 using Base:Integer
 using Arpack
-using LightGraphs
+using Graphs
 using SparseArrays
 
 export Model,
@@ -111,7 +111,7 @@ function loadDumpedGraph(filename::String)::SimpleGraph
     end
 
     Nodes, Edges = map((x) -> parse(Int64, x), tokens)
-    G = LightGraphs.SimpleGraph(Nodes)
+    G = SimpleGraph(Nodes)
 
     for line in readlines(mtxFile)
         global tokens
@@ -141,8 +141,8 @@ where `u` and `v` are the nodes numbers and `A_{u, v}` is the edge weight.
 function dumpGraph(G, filename)
     weight = 1
     open(filename, "w") do out
-        println(out, LightGraphs.nv(G), " ", LightGraphs.ne(G))
-        for edge in LightGraphs.edges(G)
+        println(out, nv(G), " ", ne(G))
+        for edge in edges(G)
             println(out, edge.src, " ", edge.dst, " ", weight)
         end
     end
@@ -367,7 +367,7 @@ end
 #     # Evaluates the Ising energy for the given graph and configuration
 #     #
 #     # INPUT:
-#     #   graph - LightGraphs object
+#     #   graph - Graphs object
 #     #   conf - configuration array with elemnts \pm 1
 #     #
 #     # OUTPUT:
@@ -386,7 +386,7 @@ end
 Evaluate the (weighted) cut value for the given graph and binary configuration
 
 INPUT:
-    graph - LightGraphs object
+    graph - Graphs object
     conf - binary configuration array with elemnts ± 1
 OUTPUT:
     sum_e (1 - e1. e.2)/2
@@ -623,13 +623,17 @@ end
 
 function local_search!(graph, conf)
     # Eliminates vertices breaking the majority rule
+    # Changes the configuration in place and returns the number of passes
     nonstop = true
+    count = 0
     while nonstop
+        count += 1
         nonstop = false
         for node in vertices(graph)
             nonstop |= majority_flip!(graph, conf, node)
         end
     end
+    return count
 end
 
 function local_twosearch(graph, conf)
@@ -648,8 +652,11 @@ end
 
 function local_twosearch!(graph, conf)
     # Eliminates pairs breaking the edge-majority rule
+    # Changes the configuration in place and returns the number of passes
     nonstop = true
+    count = 0
     while nonstop
+        count += 1
         nonstop = false
         for link in edges(graph)
             if conf[link.src] * conf[link.dst] < 1
@@ -657,6 +664,7 @@ function local_twosearch!(graph, conf)
             end
         end
     end
+    return count
 end
 
 """
@@ -887,7 +895,6 @@ function trajectories(graph, methods::Array{Function}, Ks, scale, duration, Vini
     return VFull
 end
 
-
 function trajectories(graph, method::Function, Ks, scale, duration, Vini)
     # Advances the graph duration - 1 steps forward
     # This is the verbose version, which returns the full dynamics
@@ -910,6 +917,21 @@ function trajectories(graph, method::Function, Ks, scale, duration, Vini)
     end
 
     return VFull
+end
+
+function trajectories(model::Model, duration, Vini)
+    # Advances the graph `(duration - 1)` steps forward
+    # This is the verbose version, which returns the full dynamics
+    #
+    # model - the model description
+    # duration - how many time points to evaluate
+    # V0 - the initial conditions
+    #
+    # OUTPUT:
+    #   VFull = [V(0) V(1) ... V(duration-1)]
+
+    return trajectories(model.graph, model.method, model.Ks,
+                        model.scale, duration, Vini)
 end
 
 function propagate(graph, method::Function, Ks, scale, duration, Vini)
