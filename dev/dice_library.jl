@@ -150,7 +150,7 @@ end
 
 ############################################################
 #
-# Common methods for evaluating the change rate and the Hamiltonian
+### A library of coupling functions (TODO: detach?)
 #
 ############################################################
 
@@ -194,13 +194,23 @@ function dtri(v)
 end
 
 function triangular(v)
-    # local p::Integer
-    # local parity::Integer
-    # local envelope::Integer
+    # Odd piece-wise linear defined within the period [-2, 2] by
+    # phi(-2) = phi(0) = phi(2) = 0
+    # - phi(-1) = phi(1) = 1
+    # This works for both scalars and vectors 
     p = Int.(floor.(v ./ 2 .+ 1 / 2))
     parity = rem.(abs.(p), 2)
-#    return (v .- p .* 2) .* dtri(v)
     return (v .- p .* 2) .* (-2 .* parity .+ 1)
+end
+
+function triangular_mod(v)
+    # Odd piece-wise linear defined within the period [-2, 2] by
+    # phi(-2) = phi(0) = phi(2) = 0
+    # - phi(-1) = phi(1) = 1
+    # this is slightly slower than triangular(v) above because of the mod
+    # but looks easier to understand
+    vr = mod.(v .+ 1, 4) .- 1
+    return vr .+ min.(0 .* vr, -vr .+ 1).*2
 end
 
 function triangular(v1, v2)
@@ -271,13 +281,47 @@ function skew_triangular(v1, v2)
     return skew_triangular(v1 - v2)
 end
 
+#
+# Continuous representation models
+#
+
 function continuous_model_1(v1, v2)
     return -dtri(v1).*triangular(v2)
 end
 
-# function continuous_model_a(v1, v2)
-#     return -dtri(v1).*triangular(v2)
-# end
+function dtri_cont(v1, s)
+    # scalar version
+    vr = mod(v1 + 2, 4) - 2
+    vabs = abs(v1)
+    m = 2/(2 - s)
+    out =
+        if vabs < 1 - s
+            m
+        elseif vabs <= 1 + s
+            (1 - vabs)*m/s
+        else
+            -m
+        end
+    return out
+end
+
+function continuous_model_1_cont(v1, v2, s = 0.1)
+    # change rate in Model 1 with continuous derivative
+    # s is the half-width of the transitional region between -1 and 1
+    # v1 is presumed to be scalar
+    # noticeably slower
+    return -dtri_cont(v1, s).*triangular(v2)
+end
+
+# For model 2 (differential, GW-continuation, whatnot), the triangular
+# function is different. It is an even function with period 2 determined
+# by phi_2(0) = phi_2(2) = 0, phi(1) = 1
+function continuous_model_2(v1, v2)
+    dv = v1 .- v2
+    vabs = abs.(dv)
+    parity = -rem.(Int.(floor.(vabs)), 2).*2 .+ 1
+    return sign.(dv).*parity
+end
 
 ############################################################
 #
@@ -826,9 +870,10 @@ function step_rate(graph::SimpleGraph, methods::Array{Function}, V::Array, Ks::F
     # OUTPUT:
     #   ΔV(1:|graph|) - array of increments
 
-    out = Ks .* methods[2](V)
+#    out = Ks .* methods[2](V)
     for node in vertices(graph)
         Vnode = V[node]
+        out[node] =  Ks .* method[2](Vnode)
 
         for neib in neighbors(graph, node)
             out[node] += methods[1](Vnode, V[neib])
@@ -842,7 +887,7 @@ function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
     # This version presumes that there is a single method for coupling and
     # anisotropy and that there is only easy-axis anisotropy
     #
-    # This is a hacky function (see how the anisotropy is evaluated
+    # This is a hacky function (notice how the anisotropy is evaluated
     # using method(V, -V)). It should be used with care as the
     # implemented idea of a "single method" is flawed. A true single
     # method would imply the presence of a field (a fixed
@@ -858,10 +903,12 @@ function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
     # OUTPUT:
     #   ΔV(1:|graph|) - array of increments
 
-    out = Ks .* method(V, -V)
+    #    out = Ks .* method(V, -V) # refactoring to scalars
+    out  = zeros(length(V))
     for node in vertices(graph)
         Vnode = V[node]
-
+        out[node] =  Ks .* method(Vnode, -Vnode)
+        
         for neib in neighbors(graph, node)
             out[node] += method(Vnode, V[neib])
         end
@@ -980,88 +1027,88 @@ function propagate(model::Model, duration, Vini)
     return V
 end
 
-function propagateAdaptively(model::Model, duration, Vini)
-    # Advances the model::Model at most duration - 1 steps forward
-    # with an adaptive time scale
-    #
-    #####    NOTE: the current state is under construction!!!     ######
-    #
-    # Returns only the final state vector
-    #
-    # model - the model description
-    # duration - how many time points to evaluate
-    # Vini - the initial conditions
-    #
-    # OUTPUT:
-    #   [V[1] .. V[nv(graph)] at t = duration - 1
+# function propagateAdaptively(model::Model, duration, Vini)
+#     # Advances the model::Model at most duration - 1 steps forward
+#     # with an adaptive time scale
+#     #
+#     #####    NOTE: the current state is under construction!!!     ######
+#     #
+#     # Returns only the final state vector
+#     #
+#     # model - the model description
+#     # duration - how many time points to evaluate
+#     # Vini - the initial conditions
+#     #
+#     # OUTPUT:
+#     #   [V[1] .. V[nv(graph)] at t = duration - 1
 
-    tauconst = 0.6
-    cconst = 0.5
-    excconst = 10 # how many upscales over the initial one are allowed
+#     tauconst = 0.6
+#     cconst = 0.5
+#     excconst = 10 # how many upscales over the initial one are allowed
 
-    V = Vini
-    graph = model.graph
-    method = model.method
-    scale = model.scale
+#     V = Vini
+#     graph = model.graph
+#     method = model.method
+#     scale = model.scale
 
-    curEnergy = energy(graph, method, V)
+#     curEnergy = energy(graph, method, V)
 
-    exccount = 0 # upscales counter
-    tau = 0
-    while tau < duration
-        exccount = 0 # upscales counter
-        grad  = step_rate(graph, method, V, model.Ks)
+#     exccount = 0 # upscales counter
+#     tau = 0
+#     while tau < duration
+#         exccount = 0 # upscales counter
+#         grad  = step_rate(graph, method, V, model.Ks)
 
-        ΔV = scale .* grad
-        grad2 = sum(grad .* grad)
-        bestshift = grad2 * scale * cconst
+#         ΔV = scale .* grad
+#         grad2 = sum(grad .* grad)
+#         bestshift = grad2 * scale * cconst
 
-        candEnergy = energy(graph, method, V + ΔV)
+#         candEnergy = energy(graph, method, V + ΔV)
 
-        dEr = abs(candEnergy - curEnergy) / (1 + abs(curEnergy))
-        if ( bestshift <= 1e-5)
-            debug_msg("Saturation exit at tau = $tau with |dV| = $(sqrt(sum(ΔV .* ΔV))), dEr = $dEr , Enew = $candEnergy, Eold = $curEnergy, grad2 = $grad2, and scale = $scale")
-            break
-        end
+#         dEr = abs(candEnergy - curEnergy) / (1 + abs(curEnergy))
+#         if ( bestshift <= 1e-5)
+#             debug_msg("Saturation exit at tau = $tau with |dV| = $(sqrt(sum(ΔV .* ΔV))), dEr = $dEr , Enew = $candEnergy, Eold = $curEnergy, grad2 = $grad2, and scale = $scale")
+#             break
+#         end
 
-        while candEnergy > curEnergy + bestshift * 0.01 && exccount <= excconst
-            scale *= tauconst
-            ΔV = scale .* grad
-            candEnergy = energy(graph, method, V + ΔV)
-            exccount += 1
-        end
+#         while candEnergy > curEnergy + bestshift * 0.01 && exccount <= excconst
+#             scale *= tauconst
+#             ΔV = scale .* grad
+#             candEnergy = energy(graph, method, V + ΔV)
+#             exccount += 1
+#         end
 
-        # if exccount <= 2
-        scale = min(model.scale, 2 * scale)
-        # end
+#         # if exccount <= 2
+#         scale = min(model.scale, 2 * scale)
+#         # end
 
-        # if candEnergy > curEnergy
-        #     exccount += 1
-        #     if exccount > excconst
-        #         println("Upscales limit is exceeded at tau = $tau")
-        #         break
-        #     end
-        #     scale *= tauconst
-        # elseif candEnergy > curEnergy - bestshift
-        #     V += ΔV
-        # else
-        #     while candEnergy < curEnergy - bestshift
-        #         exccount -= 1
-        #         scale /= tauconst
-        #         #println("Upscaling: $scale, $exccount")
-        #         ΔV = scale.*grad
-        #         candEnergy = energy(graph, method, V + ΔV)
-        #         bestshift /= tauconst
-        #     end
-        #     V += ΔV.*tauconst # we reverse the very last rescaling
-        # end
+#         # if candEnergy > curEnergy
+#         #     exccount += 1
+#         #     if exccount > excconst
+#         #         println("Upscales limit is exceeded at tau = $tau")
+#         #         break
+#         #     end
+#         #     scale *= tauconst
+#         # elseif candEnergy > curEnergy - bestshift
+#         #     V += ΔV
+#         # else
+#         #     while candEnergy < curEnergy - bestshift
+#         #         exccount -= 1
+#         #         scale /= tauconst
+#         #         #println("Upscaling: $scale, $exccount")
+#         #         ΔV = scale.*grad
+#         #         candEnergy = energy(graph, method, V + ΔV)
+#         #         bestshift /= tauconst
+#         #     end
+#         #     V += ΔV.*tauconst # we reverse the very last rescaling
+#         # end
 
-        curEnergy = candEnergy
-        tau += 1
-    end
+#         curEnergy = candEnergy
+#         tau += 1
+#     end
 
-    return V
-end
+#     return V
+# end
 
 function energy(graph, method::Function, V::Array)
     # Evaluates the coupling energy corresponding to V
