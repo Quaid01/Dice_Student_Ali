@@ -220,7 +220,7 @@ end
 const pwDELTA = 0.1
 # const pwPERIOD = 4.0
 
-function piecewise(v)
+function piecewise_fixed(v)
     Delta = pwDELTA
     vbar = mod.(v .+ 2, 4) .- 2
     s = sign.(vbar)
@@ -231,8 +231,42 @@ function piecewise(v)
     return s .* out
 end
 
-function piecewise(v1, v2)
-    return piecewise(v1 - v2)
+function piecewise_generic(v, Delta = 0.1)
+    # This version is slow but generic
+    vbar = mod.(v .+ 2, 4) .- 2
+    s = sign.(vbar)
+
+    ind = sign.(s .* vbar .- 1)
+    out = Delta .* ind .+ 0.5
+
+    return s .* out
+end
+
+function piecewise_local(v, Delta = 0.1)
+    # this version relies on the small variation of v
+    # TODO: make it decent
+    vabs = abs(v)
+    out =
+        if vabs < 1 + Delta
+            sign(v)/(1+Delta)*vabs
+        else
+            if vabs < 3 - Delta
+                -sign(v)/(1 - Delta)*(vabs - 2)
+            else
+                if vabs < 5 + Delta
+                    sign(v)/(1+Delta)*(vabs - 4)
+                else
+                    # add one more step?
+                    piecewise_generic(v, Delta)
+                end
+            end
+        end
+    return out
+ end
+
+
+function piecewise(v1, v2, Delta = 0.1)
+    return piecewise_local(v1 - v2, Delta)
 end
 
 function square(v)
@@ -559,6 +593,64 @@ function get_best_cut(graph, V)
 
     (becu, beco, beth) = get_best_rounding(graph, V)
     return becu
+end
+
+function get_best_cut_traced(graph, V)
+    # Produce the sequence of cut variations obtained while moving
+    # the rounding center
+    #
+    # INPUT:
+    #   graph
+    #   V - array with the voltage distribution assumed to be within [-2, 2]
+    #
+    # OUTPUT:
+    #   (DeltaC, rk) - tuple of two arrays
+    #         DeltaC - the array of the cut variations
+    #         rk      - the array of rounding centers
+
+    Nvert = nv(graph)
+    d = 2
+
+    DeltaC = []
+    rk = []
+
+    sorting = sortperm(V)
+    vvalues = V[sorting]
+    push!(vvalues, 2) # a formal end point
+
+    left = -2
+    bestleft = left
+    
+    start = 1
+    stop = findfirst(t -> t > 0, vvalues)
+    if isnothing(stop) # there's no such element, all points are in [-2, 0]
+        stop = Nvert + 1
+    end
+    runconf = round_configuration(V, bestleft)
+
+    while left < 0
+        if vvalues[start] <= vvalues[stop] - d
+            flipped = sorting[start] # the true index of the flipped spin
+            left = vvalues[start]
+            start += 1
+        else
+            if stop > Nvert # trying to flip the formal point = the end
+                break
+            end
+            flipped = sorting[stop]
+            left = vvalues[stop] - d
+            stop += 1
+        end
+
+        dC = 0
+        for j in neighbors(graph, flipped)
+            dC += runconf[flipped]*runconf[j]
+        end
+        runconf[flipped] *= -1
+        push!(DeltaC, dC)
+        push!(rk, left)
+    end
+    return (DeltaC, rk)
 end
 
 ####################################################
