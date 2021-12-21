@@ -45,19 +45,40 @@ export Model,
 const silence_default = 3
 mutable struct Model
     graph::SimpleGraph
-    method::Function
+    method::Function # obsolete, phase out
+    coupling::Function
     # method_energy::Function
     scale::Float64  # Defines the magnitude of the exchange terms
     Ks::Float64     # The magnitude of the anisotropy term
+    anisotropy::Function
+    extended::Bool # Whether there is an extension
     silence::Integer # the inverse level of verbosity
-    Model(graph, method, scale) =
-        new(graph, method, scale, 0, silence_default)
-    Model(graph, method, scale, Ks) =
-        new(graph, method, scale, Ks, silence_default)
-    Model(graph, method, scale, Ks, silence) =
-        new(graph, method, scale, Ks, silence)
+    Model() = new() 
 end
 
+# Several explicit (legacy?) constructors
+Model(graph, coupling, scale) =
+    begin
+        M = Model()
+        M.graph = graph
+        M.coupling = coupling
+        M.method = M.coupling
+        # The default interpretation of anisotropy
+        M.anisotropy = (x) -> M.coupling(x, -x) 
+        M.scale = scale
+        M.Ks = 0
+        M.silence = silence_default
+        M.extended = false
+        return M;
+    end
+
+Model(graph, coupling, scale, Ks) =
+    begin
+        M = Model(graph, coupling, scale)
+        M.Ks = Ks
+        return M;
+    end
+        
 ############################################################
 #
 ### Internal service functions
@@ -939,51 +960,12 @@ end
 #
 ##########################################################
 
-
-function step_rate(graph::SimpleGraph, methods::Array{Function}, V::Array, Ks::Float64)
-    # Evaluates ΔV for a single step
-    # This version takes an array of methods evaluating coupling
-    # and local energies
-    #
-    # INPUT:
-    #    `graph` - unweighted graph carrying V's
-    #
-    #    `methods`
-    #         list with two functions evaluating different contributions
-    #         to the equations of motion:
-    #
-    #         methods[1](V_1, V_2)
-    #                 contribution to the rate due to "coupling"
-    #                 between V_1 and V_2
-    #
-    #         methods[2](V)
-    #                 local contribution (anisotropy)
-    #            
-    #    V(1:|graph|) - current distribution of dynamical variables
-    #
-    #    Ks - the anisotropy constant
-    #
-    # OUTPUT:
-    #   ΔV(1:|graph|) - array of increments
-
-#    out = Ks .* methods[2](V)
-    for node in vertices(graph)
-        Vnode = V[node]
-        out[node] =  Ks .* method[2](Vnode)
-
-        for neib in neighbors(graph, node)
-            out[node] += methods[1](Vnode, V[neib])
-        end
-    end
-    return out
-end
-
 function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
     # Evaluates ΔV for a single step
     # This version presumes that there is a single method for coupling and
     # anisotropy and that there is only easy-axis anisotropy
     #
-    # This is a hacky function (notice how the anisotropy is evaluated
+    # This is a default function (notice how the anisotropy is evaluated
     # using method(V, -V)). It should be used with care as the
     # implemented idea of a "single method" is flawed. A true single
     # method would imply the presence of a field (a fixed
@@ -1012,33 +994,35 @@ function step_rate(graph::SimpleGraph, method::Function, V::Array, Ks::Float64)
     return out
 end
 
-function trajectories(graph, methods::Array{Function}, Ks, scale, duration, Vini)
-    # Advances the graph ()duration - 1) steps forward taking an array
-    # of methods passed further down
+function step_rate_extended(graph::SimpleGraph, coupling::Function, V::Array,
+                            Ks::Float64, anisotropy::Function, R::Float64)
+    # Evaluate ΔV and ΔR in the extended system
     #
-    # This is the verbose version, which returns the full dynamics
-    #
-    # scale - parameter to tweak the dynamics
-    # duration - how many time points to evaluate
-    # V0 - the initial conditions
+    # INPUT:
+    #    graph - unweighted graph carrying V's 
+    #    method - method to evaluate different contributions
+    #   V(1:|graph|) - current distribution of dynamical variables
+    #    Ks - anisotropy constant
     #
     # OUTPUT:
-    #   VFull = [V(0) V(1) ... V(duration-1)]
+    #   ΔV(1:|graph|) - array of increments
 
-    VFull = Vini
-    V = Vini
-
-    tran = 1:(duration - 1)
-    for tau in tran
-        ΔV = scale .* step_rate(graph, methods, V, Ks)
-        V += ΔV
-        VFull = [VFull V]
+    #    out = Ks .* method(V, -V) # refactoring to scalars
+    out  = zeros(length(V))
+    r_out = 0
+    for node in vertices(graph)
+        Vnode = V[node]
+        an = Ks * anisotropy(Vnode - R)
+        out[node] = an
+        r_out += -an
+        for neib in neighbors(graph, node)
+            out[node] += coupling(Vnode, V[neib])
+        end
     end
-
-    return VFull
+    return (out, r_out)
 end
 
-function trajectories(graph, method::Function, Ks, scale, duration, Vini)
+function trajectories(graph, duration, scale, method::Function, Ks, Vini)
     # Advances the graph duration - 1 steps forward
     # This is the verbose version, which returns the full dynamics
     #
@@ -1073,11 +1057,54 @@ function trajectories(model::Model, duration, Vini)
     # OUTPUT:
     #   VFull = [V(0) V(1) ... V(duration-1)]
 
-    return trajectories(model.graph, model.method, model.Ks,
-                        model.scale, duration, Vini)
+    return trajectories(model.graph, duration, model.scale, model.coupling,
+                        model.Ks, Vini)
 end
 
-function propagate(graph, method::Function, Ks, scale, duration, Vini)
+function trajectories_extended(graph, method::Function, Ks, scale, duration, Vini)
+    # Advances the graph duration - 1 steps forward
+    # This is the verbose version, which returns the full dynamics
+    #
+    # scale - parameter to tweak the dynamics
+    # duration - how many time points to evaluate
+    # V0 - the initial conditions
+    #
+    # OUTPUT:
+    #   VFull = [V(0) V(1) ... V(duration-1)]
+
+    VFull = Vini
+    V = Vini
+    RFull = [Rini]
+    R = Rini
+
+    for tau in 1:(duration - 1)
+        (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks, one_method, R)
+        ΔV = scale .* step_rate(graph, method, V, Ks)
+        V += scale .* ΔV
+        R += scale * ΔR
+        VFull = [VFull V]
+        RFull = [RFull R]
+    end
+
+    return (VFull, RFull)
+end
+
+function trajectories_extended(model::Model, duration, Vini)
+    # Advances the graph `(duration - 1)` steps forward
+    # This is the verbose version, which returns the full dynamics
+    #
+    # model - the model description
+    # duration - how many time points to evaluate
+    # V0 - the initial conditions
+    #
+    # OUTPUT:
+    #   VFull = [V(0) V(1) ... V(duration-1)]
+
+    return trajectories(model.graph, duration, model.scale, model.coupling,
+                        model.Ks, Vini)
+end
+
+function propagate(graph, duration, scale, method::Function, Ks, Vini)
     # Advances the graph duration - 1 steps forward
     # This is the short version, which returns only the final state vector
     #
@@ -1087,6 +1114,8 @@ function propagate(graph, method::Function, Ks, scale, duration, Vini)
     #
     # OUTPUT:
     #   [V[1] .. V[nv(graph)] at t = duration - 1
+    #
+    # NOTE: the order of parameters changed in 0.2.0
 
     V = Vini
 
@@ -1109,122 +1138,91 @@ function propagate(model::Model, duration, Vini)
     # OUTPUT:
     #   [V[1] .. V[nv(graph)] at t = duration - 1
 
+    return propagate(model.graph, duration, model.scale, model.coupling,
+                     model.Ks, model.Vini)
+end
+
+"""
+    propagate_extended(graph, duration, scale, pair_method, Vini,
+                              Ks, one_method, Rini)
+
+Propagate extended G + 1 model with the explicit specification.
+
+INPUT:
+      graph - the model description
+      duration - the number of time points
+      scale - the length of the single time step
+      pair_method - coupling
+      Vini - the initial configuration of G
+      Ks - the anisotropy costant
+      one_method - the anisotropy method
+      Rini - the initial state of the additional degree of freedom
+
+OUTPUT:
+      (Vfinal, Rfinal) -
+              Vfinal - the final configuration of G
+              Rfinal - the final state of the additional degree of freedom
+"""
+function propagate_extended(graph, duration, scale, pair_method, Vini, Ks, one_method, Rini)
+
     V = Vini
-    graph = model.graph
-    method = model.method
-    Ks = model.Ks
-    scale = model.scale
+    R = Rini
 
     for tau in 1:(duration - 1)
-        ΔV = scale .* step_rate(graph, method, V, Ks)
-        V += ΔV
+        (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks, one_method, R)
+        V += scale .* ΔV
+        R += scale * ΔR
     end
-
-    return V
+    return (V, R)
 end
 
-# function propagateAdaptively(model::Model, duration, Vini)
-#     # Advances the model::Model at most duration - 1 steps forward
-#     # with an adaptive time scale
+
+"""
+    propagate_extended(model::Model, duration, Vini, Rini)
+
+Propagate extended G + 1 model.
+
+INPUT:
+      model - the model description
+      duration - the number of time points
+      Vini - the initial configuration of G
+      Rini - the initial state of the additional degree of freedom
+
+OUTPUT:
+      (Vfinal, Rfinal) -
+              Vfinal - the final configuration of G
+              Rfinal - the final state of the additional degree of freedom
+"""
+function propagate_extended(model::Model, duration, Vini, Rini)
+    graph = model.graph
+    Ks = model.Ks
+    pair_method = model.coupling
+    one_method = model.anisotropy
+    scale = model.scale
+    
+    return propagate_extended(graph, duration, scale, pair_method, Vini,
+                              Ks, one_method, Rini)
+end
+
+# function energy(graph, method::Function, V::Array)
+#     # Evaluates the coupling energy corresponding to V
+#     # Note: this is essential that this energy evaluates only the coupling energy without
+#     #       any anisotropic terms
 #     #
-#     #####    NOTE: the current state is under construction!!!     ######
+#     #####            NOTE: It's broken as of now! Need to pass the correct method
 #     #
-#     # Returns only the final state vector
-#     #
-#     # model - the model description
-#     # duration - how many time points to evaluate
-#     # Vini - the initial conditions
-#     #
-#     # OUTPUT:
-#     #   [V[1] .. V[nv(graph)] at t = duration - 1
+#     # INPUT:
+#     #   method here is the energy of the elementary one-edge graph. Of course, this is
+#     #          not the same method as in the propagation functions (that woould be the minus
+#     #          gradient of the method passed to this function)
 
-#     tauconst = 0.6
-#     cconst = 0.5
-#     excconst = 10 # how many upscales over the initial one are allowed
-
-#     V = Vini
-#     graph = model.graph
-#     method = model.method
-#     scale = model.scale
-
-#     curEnergy = energy(graph, method, V)
-
-#     exccount = 0 # upscales counter
-#     tau = 0
-#     while tau < duration
-#         exccount = 0 # upscales counter
-#         grad  = step_rate(graph, method, V, model.Ks)
-
-#         ΔV = scale .* grad
-#         grad2 = sum(grad .* grad)
-#         bestshift = grad2 * scale * cconst
-
-#         candEnergy = energy(graph, method, V + ΔV)
-
-#         dEr = abs(candEnergy - curEnergy) / (1 + abs(curEnergy))
-#         if ( bestshift <= 1e-5)
-#             debug_msg("Saturation exit at tau = $tau with |dV| = $(sqrt(sum(ΔV .* ΔV))), dEr = $dEr , Enew = $candEnergy, Eold = $curEnergy, grad2 = $grad2, and scale = $scale")
-#             break
-#         end
-
-#         while candEnergy > curEnergy + bestshift * 0.01 && exccount <= excconst
-#             scale *= tauconst
-#             ΔV = scale .* grad
-#             candEnergy = energy(graph, method, V + ΔV)
-#             exccount += 1
-#         end
-
-#         # if exccount <= 2
-#         scale = min(model.scale, 2 * scale)
-#         # end
-
-#         # if candEnergy > curEnergy
-#         #     exccount += 1
-#         #     if exccount > excconst
-#         #         println("Upscales limit is exceeded at tau = $tau")
-#         #         break
-#         #     end
-#         #     scale *= tauconst
-#         # elseif candEnergy > curEnergy - bestshift
-#         #     V += ΔV
-#         # else
-#         #     while candEnergy < curEnergy - bestshift
-#         #         exccount -= 1
-#         #         scale /= tauconst
-#         #         #println("Upscaling: $scale, $exccount")
-#         #         ΔV = scale.*grad
-#         #         candEnergy = energy(graph, method, V + ΔV)
-#         #         bestshift /= tauconst
-#         #     end
-#         #     V += ΔV.*tauconst # we reverse the very last rescaling
-#         # end
-
-#         curEnergy = candEnergy
-#         tau += 1
+#     en = 0
+#     for edge in edges(graph)
+#         en += cosine(V[edge.src] - V[edge.dst])
 #     end
 
-#     return V
+#     return en
 # end
-
-function energy(graph, method::Function, V::Array)
-    # Evaluates the coupling energy corresponding to V
-    # Note: this is essential that this energy evaluates only the coupling energy without
-    #       any anisotropic terms
-    #
-    #####            NOTE: It's broken as of now! Need to pass the correct method
-    #
-    # INPUT:
-    #   method here is the energy of the elementary one-edge graph. Of course, this is
-    #          not the same method as in the propagation functions (that woould be the minus
-    #          gradient of the method passed to this function)
-
-    en = 0
-    for edge in edges(graph)
-        en += cosine(V[edge.src] - V[edge.dst])
-    end
-
-    return en
-end
 
 ############################################################
 #
@@ -1233,11 +1231,7 @@ end
 ############################################################
 
 function conf_decay(graph, conf::Array, listlen=3)
-    # Evaluates the eigenvalue and eigenvector of the most unstable excitation in configuration conf
-    #
-    # According to configuration conf, we divide graph into two induced subgraphs (isg) and a bipartite graph (big)
-    # so that graph = isg1 + isg2 + big (pluses are set unions)
-    # For this separation we evaluate the maximal eigenvalue of L(isg1 + isg2) - L(big), where L is the Laplacian
+    # Evaluate the instability of conf
     #
     # INPUT:
     #   graph
@@ -1245,7 +1239,7 @@ function conf_decay(graph, conf::Array, listlen=3)
     #   listlen - how many eigenvalues to be returned
     #
     # OUTPUT:
-    # lambda, v - eigenvalue and eigenvector
+    # array[1:listlen] of the largest eigenvalues
 
     NVert = nv(graph)
     if NVert !== length(conf)
@@ -1274,10 +1268,6 @@ end
 
 function conf_decay_states(graph, conf::Array, listlen=3)
     # Evaluates the eigenvalue and eigenvector of the most unstable excitation in configuration conf
-    #
-    # According to configuration conf, we divide graph into two induced subgraphs (isg) and a bipartite graph (big)
-    # so that graph = isg1 + isg2 + big (pluses are set unions)
-    # For this separation we evaluate the maximal eigenvalue of L(isg1 + isg2) - L(big), where L is the Laplacian
     #
     # INPUT:
     #   graph
@@ -1311,10 +1301,12 @@ function conf_decay_states(graph, conf::Array, listlen=3)
     return (eigvalue, eigvector)
 end
 
-function scan_for_best_configuration(model::Model, Vc::Array, domain::Float64, tmax::Integer, Ninitial::Integer)
+function scan_for_best_configuration(model::Model, Vc::Array,
+                                     domain::Float64, tmax::Integer, Ninitial::Integer)
     # Scans a vicinity of Vc with size given by domain in the "Monte Carlo style"
     #
-    # Ninitial number of random initial conditions with individual amplitudes varying between ±domain
+    # Ninitial number of random initial conditions with individual amplitudes
+    # varying between ±domain
 
     G = model.graph
     Nvert = nv(G)
