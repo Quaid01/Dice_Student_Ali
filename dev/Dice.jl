@@ -30,8 +30,7 @@ using Graphs
 using SparseArrays
 
 export Model,
-    get_connected,
-    get_initial,
+    get_connected, get_initial,
     sine, triangular,
     cut, get_best_cut, get_best_configuration, extract_configuration,
     number_to_conf, 
@@ -49,11 +48,14 @@ mutable struct Model
     method::Function
     # method_energy::Function
     scale::Float64  # Defines the magnitude of the exchange terms
-    Ks::Float64     # The magnitude of the anisotropy term in scale's (not used)
+    Ks::Float64     # The magnitude of the anisotropy term
     silence::Integer # the inverse level of verbosity
-    Model(graph, method, scale) = new(graph, method, scale, 0, silence_default)
-    Model(graph, method, scale, Ks) = new(graph, method, scale, Ks, silence_default)
-    Model(graph, method, scale, Ks, silence) = new(graph, method, scale, Ks, silence)
+    Model(graph, method, scale) =
+        new(graph, method, scale, 0, silence_default)
+    Model(graph, method, scale, Ks) =
+        new(graph, method, scale, Ks, silence_default)
+    Model(graph, method, scale, Ks, silence) =
+        new(graph, method, scale, Ks, silence)
 end
 
 ############################################################
@@ -323,10 +325,10 @@ function continuous_model_1(v1, v2)
     return -dtri(v1).*triangular(v2)
 end
 
-function dtri_cont(v1, s)
-    # scalar version
-    vr = mod(v1 + 2, 4) - 2
-    vabs = abs(vr)
+function dtri_cont(v, s)
+    # scalar version only
+    vreduced = mod(v + 2, 4) - 2
+    vabs = abs(vreduced)
     m = 2/(2 - s)
     out =
         if vabs < 1 - s
@@ -372,9 +374,13 @@ function roundup(V)
     return mod.(V .+ 2, 4) .- 2
 end
 
-function HammingD(s1, s2)
-    # Evaluates the Hamming distance between binary strings s1 and s2
 
+"""
+    HammingD(s1, s2)
+
+Evaluate the Hamming distance between binary strings `s1` and `s2`
+"""
+function HammingD(s1, s2)
     count = 0
     for i in 1:length(s1)
         if s1[i] != s2[i]
@@ -744,7 +750,7 @@ end
 function local_search(graph, conf)
     # Eliminates vertices breaking the majority rule
     # Attention, it changes conf
-    # TODO It's ideologically off
+    # TODO It's ideologically off and probably should be phased out
     nonstop = true
     while nonstop
         nonstop = false
@@ -876,8 +882,8 @@ function extract_configuration(V::Array, threshold)
     # Binarizes V according to the threshold
     # In the modular form, the mapping looks like
     #
-    # V ∈ [threshold, threshold + width] -> C_1
-    # V ∈ [threshold - width, threshold] -> C_2
+    # V ∈ [left, left + P/2) -> C_1
+    # V ∈ [left - P/2, left) -> C_2
     #
     #
     # INPUT:
