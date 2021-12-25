@@ -460,7 +460,8 @@ function av_dispersion(graph, V)
     return sum([abs(V[edge.src] - V[edge.dst]) for edge in edges(graph)]) / nv(graph)
 end
 
-function multiple_cluster_variance(V, intervals)
+function c_variance(V, intervals)
+    # OBSOLETE (see NOTE)
     # Calculates first two momenta of the pieces of data that fall
     # within given M intervals provided in `intervals`
     #
@@ -470,6 +471,8 @@ function multiple_cluster_variance(V, intervals)
     #
     # OUTPUT:
     #   M x 3 array with the number of points, mean and variance of data inside the respective intervals
+    #
+    # NOTE: it cannot process a single interval and does not treat folding intervals
 
     out = zeros(size(intervals)[1], size(intervals)[2] + 1)
 
@@ -735,6 +738,7 @@ end
 
 function randvector(len::Integer, p=0.5)
     # A Bernoulli sequence of length len
+    # Can be used for generating random binary distributions
     return [randspin(p) for i in 1:len]
 end
 
