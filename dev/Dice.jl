@@ -46,18 +46,27 @@ const silence_default = 3
 mutable struct Model
     graph::SimpleGraph
     method::Function # obsolete, phase out
+    # coupling function
     coupling::Function
     # method_energy::Function
-    scale::Float64  # Defines the magnitude of the exchange terms
-    Ks::Float64     # The magnitude of the anisotropy term
+    # Defines the magnitude of the exchange terms
+    # default = 1/Nvertices
+    scale::Float64
+    # The magnitude of the anisotropy term
+    # default = 0
+    Ks::Float64
+    # anisotropy function
+    # default = coupling(x, -x)
     anisotropy::Function
-    extended::Bool # Whether there is an extension
-    silence::Integer # the inverse level of verbosity
+    extended::Bool # Whether there is an extension (remove?)
+    # the inverse level of verbosity
+    # default = silence_default
+    silence::Integer 
     Model() = new() 
 end
 
 # Several explicit (legacy?) constructors
-Model(graph, coupling, scale) =
+Model(graph, coupling) =
     begin
         M = Model()
         M.graph = graph
@@ -65,6 +74,16 @@ Model(graph, coupling, scale) =
         M.method = M.coupling
         # The default interpretation of anisotropy
         M.anisotropy = (x) -> M.coupling(x, -x) 
+        M.scale = 1/nv(graph)
+        M.Ks = 0
+        M.silence = silence_default
+        M.extended = false
+        return M;
+    end
+
+Model(graph, coupling, scale) =
+    begin
+        M = Model(graph, coupling)
         M.scale = scale
         M.Ks = 0
         M.silence = silence_default
@@ -441,8 +460,9 @@ function av_dispersion(graph, V)
     return sum([abs(V[edge.src] - V[edge.dst]) for edge in edges(graph)]) / nv(graph)
 end
 
-function c_variance(V, intervals)
-    # Calculates first two momenta of the pieces of data that fall within given M intervals
+function multiple_cluster_variance(V, intervals)
+    # Calculates first two momenta of the pieces of data that fall
+    # within given M intervals provided in `intervals`
     #
     # INPUT:
     #   V - array of data
@@ -464,6 +484,29 @@ function c_variance(V, intervals)
     end
 
     return out
+end
+
+"""
+    cluster_variance(V, interval)
+
+Calculate first two momenta of the pieces of data that fall within
+the provided interval
+    
+INPUT:
+      V - array of data
+      interval - (vmin, vmax)
+    
+OUTPUT:
+      Array[3] = [number of points, mean, variance]
+"""
+function cluster_variance(V, interval)
+ 
+    ari = filter(t -> interval[1] < t < interval[2], V)
+    ni = length(ari)
+    av = sum(ari) / ni
+    var = sum((ari .- av).^2) / ni
+
+    return [ni, av, sqrt(var)]
 end
 
 # function H_Ising(graph, conf)
@@ -899,17 +942,18 @@ function round_configuration(V::Array, leftstop)
     return conf
 end
 
-function extract_configuration(V::Array, threshold)
-    # Binarizes V according to the threshold
+function extract_configuration(V::Array, center)
+    # Binarizes V according to the center of the +-interval
     # In the modular form, the mapping looks like
     #
-    # V ∈ [left, left + P/2) -> C_1
-    # V ∈ [left - P/2, left) -> C_2
+    # V ∈ [center - P/4, center + P/4) -> C_1
+    #
+    # where P=4 is the period
     #
     #
     # INPUT:
     #   V - data array (is presumed to be rounded and within [-2, 2])
-    #   threshold - the rounding center
+    #   center - the rounding center
     #
     # OUTPUT:
     #   size(V) array with elements + 1 and -1 depending on the relation of
@@ -917,10 +961,10 @@ function extract_configuration(V::Array, threshold)
 
     width = 1 # half-width of the rounding interval
 
-    if abs(threshold) <= 1
-        inds = threshold - width .<= V .< threshold + width
+    if abs(center) <= 1
+        inds = center - width .<= V .< center + width
     else
-        return -extract_configuration(V, threshold - 2 * sign(threshold))
+        return -extract_configuration(V, center - 2 * sign(center))
     end
     out = 2 .* inds .- 1
     return out
@@ -1054,23 +1098,22 @@ function trajectories(model::Model, duration, Vini)
     # duration - how many time points to evaluate
     # V0 - the initial conditions
     #
-    # OUTPUT:
-    #   VFull = [V(0) V(1) ... V(duration-1)]
+    # OUTPUT:    #   VFull = [V(0) V(1) ... V(duration-1)]
 
     return trajectories(model.graph, duration, model.scale, model.coupling,
                         model.Ks, Vini)
 end
 
-function trajectories_extended(graph, method::Function, Ks, scale, duration, Vini)
-    # Advances the graph duration - 1 steps forward
+function trajectories_extended(graph, duration, scale, pair_method::Function, Vini,
+                               Ks, one_method::Function, Rini)
+    # Advance the graph `duration - 1` steps forward
     # This is the verbose version, which returns the full dynamics
     #
-    # scale - parameter to tweak the dynamics
-    # duration - how many time points to evaluate
-    # V0 - the initial conditions
     #
     # OUTPUT:
-    #   VFull = [V(0) V(1) ... V(duration-1)]
+    #   (VFull, RFull)
+    #           VFull = [V(0) V(1) ... V(duration-1)]
+    #           RFull - the final state of the added degree of freedom
 
     VFull = Vini
     V = Vini
@@ -1079,8 +1122,7 @@ function trajectories_extended(graph, method::Function, Ks, scale, duration, Vin
 
     for tau in 1:(duration - 1)
         (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks, one_method, R)
-        ΔV = scale .* step_rate(graph, method, V, Ks)
-        V += scale .* ΔV
+         V += scale .* ΔV
         R += scale * ΔR
         VFull = [VFull V]
         RFull = [RFull R]
@@ -1089,7 +1131,7 @@ function trajectories_extended(graph, method::Function, Ks, scale, duration, Vin
     return (VFull, RFull)
 end
 
-function trajectories_extended(model::Model, duration, Vini)
+function trajectories_extended(model::Model, duration, Vini, Rini)
     # Advances the graph `(duration - 1)` steps forward
     # This is the verbose version, which returns the full dynamics
     #
@@ -1100,8 +1142,8 @@ function trajectories_extended(model::Model, duration, Vini)
     # OUTPUT:
     #   VFull = [V(0) V(1) ... V(duration-1)]
 
-    return trajectories(model.graph, duration, model.scale, model.coupling,
-                        model.Ks, Vini)
+    return trajectories_extended(model.graph, duration, model.scale, model.coupling,
+                        Vini, model.Ks, model.anisotropy, Rini)
 end
 
 function propagate(graph, duration, scale, method::Function, Ks, Vini)
@@ -1139,7 +1181,7 @@ function propagate(model::Model, duration, Vini)
     #   [V[1] .. V[nv(graph)] at t = duration - 1
 
     return propagate(model.graph, duration, model.scale, model.coupling,
-                     model.Ks, model.Vini)
+                     model.Ks, Vini)
 end
 
 """
