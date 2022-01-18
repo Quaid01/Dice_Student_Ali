@@ -724,6 +724,48 @@ function get_best_cut_traced(graph, V)
     return (DeltaC, rk)
 end
 
+## Random rounding
+"""
+    get_random_rounding(graph, V, trials = 10)
+
+Return the best outcome out of `trials` random choices
+of the rounding center.
+
+INPUT:
+    graph - the model graph
+    V - the distribution (assumed to be folded to [-2, 2])
+    trials - the number of attempts
+
+OUTPUT:
+    (best_cut, best_conf, best_threshold)
+        found cut, configuration, and threshold
+
+NOTE:
+Rounding centers are sampled from the uniform distribution
+on the interval [-1, 1].
+"""
+function get_random_rounding(graph, V, trials = 10)
+    thresholds = 2 .* rand(trials) .- 1.0
+    bestcut = -1
+    bestconf = zeros(nv(graph))
+    bestthreshold = 0
+    for th in thresholds
+        conf = extract_configuration(V, th)
+        curcut = cut(graph, conf)
+        if curcut > bestcut
+            bestcut = curcut
+            bestconf = conf
+            bestthreshold = th
+        end
+    end
+    return (Int(bestcut), bestconf, bestthreshold)
+end
+
+function get_random_cut(graph, V, trials = 10)
+    (becu, beco, beth) = get_random_rounding(graph, V, trials)
+    return becu
+end
+
 ####################################################
 #
 ###          Service methods
