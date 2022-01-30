@@ -262,24 +262,21 @@ end
 const pwDELTA = 0.1
 # const pwPERIOD = 4.0
 
-function piecewise_fixed(v)
-    Delta = pwDELTA
-    vbar = mod.(v .+ 2, 4) .- 2
-    s = sign.(vbar)
+"""
+    piecewise_generic(v, Delta = 0.1)
 
-    ind = sign.(s .* vbar .- 1)
-    out = Delta .* ind .+ 0.5
-
-    return s .* out
-end
-
+Evaluate piece-wise linear odd periodic ([-2, 2]) skewed triangular
+function of the vector argument `v` that equals to 0 at 0 and 2 and
+to 1 at 1 + Delta.
+"""
 function piecewise_generic(v, Delta = 0.1)
     # This version is slow but generic
     vbar = mod.(v .+ 2, 4) .- 2
     s = sign.(vbar)
+    vbabs = s.*vbar
 
-    ind = sign.(s .* vbar .- 1)
-    out = Delta .* ind .+ 0.5
+    indicator = vbabs .> 1 + Delta
+    out = vbabs./(1 + Delta) - 2.*indicator.*(vbabs .- (1 + Delta))./(1 - Delta^2)
 
     return s .* out
 end
@@ -564,6 +561,12 @@ function get_rate(VFull)
     return sqrt.([out; out[end]])
 end
 
+######################
+#
+### Roundings
+#
+######################
+
 """
     get_best_rounding(graph, V)
 
@@ -593,7 +596,9 @@ function get_best_rounding(graph, V)
 
     left = -2
     bestleft = left
-    
+
+    # start is the index of the smallest value within the interval
+    # stop is the index of the smallest value to the right from the interval
     start = 1
     stop = findfirst(t -> t > 0, vvalues)
     if isnothing(stop) # there's no such element, all points are in [-2, 0]
