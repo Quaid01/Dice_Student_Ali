@@ -389,14 +389,31 @@ function continuous_model_1_cont(v1, v2, s = 0.1)
     return -dtri_cont(v1, s).*triangular(v2)
 end
 
-# For model 2 (differential, GW-continuation, whatnot), the triangular
-# function is different. It is an even function with period 2 determined
-# by phi_2(0) = phi_2(2) = 0, phi(1) = 1
+# For model 2 (rank-2 GW-representation), the coupling function is
+# sign(v)/2 for v \in [-2,2]
+function continuous_model_2(v)
+    vreduced = mod(v + 2, 4) - 2
+
+    if vreduced < 0
+        return -1/2
+    else
+        return 1/2
+    end
+end
+
 function continuous_model_2(v1, v2)
-    dv = v1 .- v2
-    vabs = abs.(dv)
-    parity = -rem.(Int.(floor.(vabs)), 2).*2 .+ 1
-    return sign.(dv).*parity
+    return continuous_model_2(v1 - v2)
+end
+
+# The cut counting function for model II
+# For v in [-2, 2], Phi(v) = |v|/2
+function continuous_model_2_energy(v)
+    vreduced = mod(v + 2, 4) - 2
+    return abs(vreduced)/2
+end
+
+function continuous_model_2_energy(v1, v2)
+    return continuous_model_2_energy(v1 - v2)
 end
 
 ############################################################
