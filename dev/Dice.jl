@@ -14,13 +14,12 @@
 
 # TODO:
 #   0. [DONE] Fix rounding
-#   1. Make energy methods for correct energy evaluations
-#      Support relaxed objective functions 
+#   1. [DONE] Make energy methods for correct energy evaluations
 #   2. Enable LUT-defined methods
 #   3. Add the weight support
 #   4. Implement logging
 #   5. Fix the chain of types
-#   6. Admit differenttial equations 
+#   6. Admit differenttial equations for continuous time machines
 
 module Dice
 
@@ -33,6 +32,7 @@ export Model,
     get_connected, get_initial,
     sine, triangular,
     cut, get_best_cut, get_best_configuration, extract_configuration,
+    H_Ising, energy,
     number_to_conf, 
     propagate, roundup,
     test_branch, scan_vicinity, scan_for_best_configuration,
@@ -48,7 +48,8 @@ mutable struct Model
     method::Function # obsolete, phase out
     # coupling function
     coupling::Function
-    # method_energy::Function
+    # energy kernel function
+    energy::Function
     # Defines the magnitude of the exchange terms
     # default = 1/Nvertices
     scale::Float64
@@ -72,6 +73,8 @@ Model(graph, coupling) =
         M.graph = graph
         M.coupling = coupling
         M.method = M.coupling
+        # temporary placeholder
+        M.energy = M.coupling
         # The default interpretation of anisotropy
         M.anisotropy = (x) -> M.coupling(x, -x) 
         M.scale = 1/nv(graph)
@@ -275,8 +278,8 @@ function piecewise_generic(v, Delta = 0.1)
     s = sign.(vbar)
     vbabs = s.*vbar
 
-    indicator = vbabs .> 1 + Delta
-    out = vbabs./(1 + Delta) - 2.*indicator.*(vbabs .- (1 + Delta))./(1 - Delta^2)
+    ind = vbabs .> 1 + Delta
+    out = vbabs./(1 + Delta) - 2 .* ind.*(vbabs .- (1 + Delta))./(1 - Delta^2)
 
     return s .* out
 end
@@ -509,22 +512,22 @@ function cluster_variance(V, interval)
     return [ni, av, sqrt(var)]
 end
 
-# function H_Ising(graph, conf)
-#     # Evaluates the Ising energy for the given graph and configuration
-#     #
-#     # INPUT:
-#     #   graph - Graphs object
-#     #   conf - configuration array with elemnts \pm 1
-#     #
-#     # OUTPUT:
-#     #   conf * A * conf /2 energy
+function H_Ising(graph, conf)
+    # Evaluates the Ising energy for the given graph and configuration
+    #
+    # INPUT:
+    #   graph - Graphs object
+    #   conf - configuration array with elemnts \pm 1
+    #
+    # OUTPUT:
+    #   conf * A * conf /2 energy
 
-#     en = 0
-#     for edge in edges(graph)
-#         en += conf[edge.src]*conf[edge.dst]
-#     end
-#     return en
-# end
+    en = 0
+    for edge in edges(graph)
+        en += conf[edge.src]*conf[edge.dst]
+    end
+    return en
+end
 
 """
     cut(graph, conf)
@@ -1297,25 +1300,20 @@ function propagate_extended(model::Model, duration, Vini, Rini)
                               Ks, one_method, Rini)
 end
 
-# function energy(graph, method::Function, V::Array)
-#     # Evaluates the coupling energy corresponding to V
-#     # Note: this is essential that this energy evaluates only the coupling energy without
-#     #       any anisotropic terms
-#     #
-#     #####            NOTE: It's broken as of now! Need to pass the correct method
-#     #
-#     # INPUT:
-#     #   method here is the energy of the elementary one-edge graph. Of course, this is
-#     #          not the same method as in the propagation functions (that woould be the minus
-#     #          gradient of the method passed to this function)
+function energy(graph, model::Model, V::Array)
+    # Evaluates the coupling energy corresponding to V
+    # Note: this is essential that this energy evaluates only coupling energy
+    #        without any anisotropy
+    #
+    # INPUT:
 
-#     en = 0
-#     for edge in edges(graph)
-#         en += cosine(V[edge.src] - V[edge.dst])
-#     end
+    en = 0
+    for edge in edges(graph)
+        en += model.energy(V[edge.src], V[edge.dst])
+    end
 
-#     return en
-# end
+    return en
+end
 
 ############################################################
 #
