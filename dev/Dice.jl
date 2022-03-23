@@ -21,6 +21,17 @@
 #   5. Fix the chain of types
 #   6. Admit differenttial equations for continuous time machines
 #   7. Redesign: implement consistently the notion of functions on the graph
+#
+# NOTE:
+# This is the version with explicitly defined functions for supporting
+# the separated representation of Model II. The introduced functions are
+#     separate
+#     combine
+#     update_2!
+#     step_rate_2
+#     propagate_2
+#     coupling_model_2
+#     integer_distribution
 
 module Dice
 
@@ -31,6 +42,7 @@ using SparseArrays
 
 export Model,
     get_connected, get_initial,
+    get_random_configuration,
     sine, triangular,
     cut, get_best_cut, get_best_configuration, extract_configuration,
     H_Ising, energy,
@@ -433,6 +445,36 @@ function roundup(V)
     return mod.(V .+ 2, 4) .- 2
 end
 
+function separate(Vinp, r = 0)
+    # Discretize a skewed distribution in the model II context
+    # INPUT:
+    #        Vinp - array to process
+    #        r - the rounding center
+    #
+    # OUTPUT:
+    #        sigmas - integer arrays of binary spins (\pm 1)
+    #        xs - array of displacements [-1, 1]
+
+    V = mod.(Vinp .- r .+ 2, 4) .- 2
+    sigmas = Int.(0 .* V)
+    xs = 0 .* V
+    for i in 1:length(V)
+        Vred = V[i]
+        (sigmas[i], xs[i]) =
+            if Vred >= 0
+                (1, Vred - 1)
+            else
+                (-1, Vred + 1)
+            end
+    end
+    return (sigmas, xs)
+end
+
+function combine(s, x, r = 0)
+    # Recover xi from the separated representation
+    return x .+ s .+ r
+end
+
 
 """
     HammingD(s1, s2)
@@ -464,6 +506,26 @@ OUTPUT:
 function EuclidD(V1, V2)
 
     return sum((V1 .- V2).^2)
+end
+
+function integer_distribution(arr)
+    # Evaluate a discrete (over integers) distribution function
+    # from the provided sample `arr`
+    # Return two arrays: x, p(x)
+
+    vals = []
+    pval = []
+    arr = sort(Int.(arr))
+    NN = length(arr)
+    ind = 1
+    while ind <= length(arr)
+        val = arr[ind]
+        elems = findall(y -> y == val, arr)
+        push!(vals, val)
+        push!(pval, length(elems))
+        ind = elems[end] + 1
+    end
+    return (vals, pval./NN)
 end
 
 function av_dispersion(graph, V)
@@ -832,9 +894,28 @@ function randspin(p=0.5)
     return s < p ? 1 : -1
 end
 
+"""
+    get_random_configuration(len::Integer, p=0.5)
+
+Return a Bernoulli integer sequence of length `len` and parameter `p`.
+
+INPUT:
+    len - the length of the sequence
+    p - the parameter of the Bernoulli distribution (probability to have 1)
+
+OUTPUT:
+    {-1, 1}^(len) - integer array of 1 and -1
+"""
+function get_random_configuration(len::Integer, p=0.5)
+    # A Bernoulli sequence of length len
+    # Can be used for generating random binary distributions
+    return [randspin(p) for i in 1:len]
+end
+
 function randvector(len::Integer, p=0.5)
     # A Bernoulli sequence of length len
     # Can be used for generating random binary distributions
+    # NOTE: OBSOLETE
     return [randspin(p) for i in 1:len]
 end
 
@@ -1359,6 +1440,63 @@ function energy(model::Model, V::Array)
     end
 
     return en
+end
+
+## Model II explicit functions
+
+function update_2!(spins, xs, dx)
+    # Update the continuous component (xs) by dx using the wrapping rule
+    # Return the number of flips (debugging version)
+    Nvert = length(spins)
+    count = 0
+    for i in 1:Nvert
+        # we presume that |dx[i]| < 2
+        Xnew = xs[i] + dx[i]
+        if Xnew > 1
+            xs[i] = Xnew - 2
+            spins[i] *= -1
+            count += 1
+        elseif Xnew < -1
+            xs[i] = Xnew + 2
+            spins[i] *= -1
+            count += 1
+        else
+            xs[i] = Xnew
+        end
+    end
+    return count
+end
+
+function step_rate_2(graph::SimpleGraph, method::Function, s, x)
+    out = zeros(length(x))
+    for node in vertices(graph)
+        xnode = x[node]
+        snode = s[node]
+        for neib in neighbors(graph, node)
+            out[node] += snode*s[neib]*method(xnode, x[neib])
+        end
+    end
+    return out
+end
+
+function propagate_2(model::Model, tmax, Sstart, Xstart)
+    # Advances the model in the initial state (Sstart, Xstart)
+    # for tmax time steps
+    X = Xstart
+    S = Sstart
+    graph = model.graph
+    scale = model.scale
+    mtd = model.method
+    for tau in 1:(tmax - 1)
+        DX = step_rate_2(graph, mtd, S, X).*scale
+        update_2!(S, X, DX)
+    end
+    return (S, X)
+end    
+
+function coupling_model_2(x1, x2, gamma = 0.0)
+    dd = x1 - x2
+    return sign(dd) + gamma*dd
 end
 
 ############################################################
