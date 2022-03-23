@@ -20,6 +20,7 @@
 #   4. Implement logging
 #   5. Fix the chain of types
 #   6. Admit differenttial equations for continuous time machines
+#   7. Redesign: implement consistently the notion of functions on the graph
 
 module Dice
 
@@ -45,6 +46,7 @@ export Model,
 const silence_default = 3
 mutable struct Model
     graph::SimpleGraph
+    # weights::Array
     method::Function # obsolete, phase out
     # coupling function
     coupling::Function
@@ -438,6 +440,7 @@ end
 Evaluate the Hamming distance between binary strings `s1` and `s2`
 """
 function HammingD(s1, s2)
+    # Int(sum(round.(abs.(s1 - s2)./2)))
     count = 0
     for i in 1:length(s1)
         if s1[i] != s2[i]
@@ -487,7 +490,8 @@ function c_variance(V, intervals)
     #   intervals - M x 2 array of intervals boundaries
     #
     # OUTPUT:
-    #   M x 3 array with the number of points, mean and variance of data inside the respective intervals
+    #   M x 3 array with the number of points, mean and variance of data
+    #   inside the respective intervals
     #
     # NOTE: it cannot process a single interval and does not treat folding intervals
 
@@ -549,7 +553,7 @@ end
 """
     cut(graph, conf)
 
-Evaluate the (weighted) cut value for the given graph and binary configuration
+Evaluate the cut value for the given graph and binary configuration
 
 INPUT:
     graph - Graphs object
@@ -569,6 +573,31 @@ function cut(graph, conf)
         out += (1 - conf[edge.src] * conf[edge.dst]) / 2
     end
     return out
+end
+
+"""
+    cut(model, conf, binflag)
+
+Evaluate the cut value for the given model and binary configuration
+
+INPUT:
+    model - Dice's model
+    conf - binary configuration array with elemnts ± 1
+    binflag - (true, false) If true (default), evaluate non-weighted cut
+
+OUTPUT:
+    (currently) sum_e (1 - e1. e.2)/2
+    (in perspective) sum_e w(e) (1 - e1. e.2)/2
+
+TODO:
+    1. Implement supporting model's weights
+"""
+function cut(model::Model, conf, binflag = true)
+    if binflag
+        return cut(model.graph, conf)
+    else # TODO: weighted cut
+        return -1
+    end
 end
 
 function get_rate(VFull)
@@ -1317,7 +1346,7 @@ function propagate_extended(model::Model, duration, Vini, Rini)
                               Ks, one_method, Rini)
 end
 
-function energy(graph, model::Model, V::Array)
+function energy(model::Model, V::Array)
     # Evaluates the coupling energy corresponding to V
     # Note: this is essential that this energy evaluates only coupling energy
     #        without any anisotropy
@@ -1325,7 +1354,7 @@ function energy(graph, model::Model, V::Array)
     # INPUT:
 
     en = 0
-    for edge in edges(graph)
+    for edge in edges(model.graph)
         en += model.energy(V[edge.src], V[edge.dst])
     end
 
