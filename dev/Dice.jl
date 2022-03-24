@@ -30,7 +30,9 @@
 #     update_2!
 #     step_rate_2
 #     propagate_2
+#     trajectories_2
 #     coupling_model_2
+#     cut_2
 #     integer_distribution
 
 module Dice
@@ -1493,6 +1495,42 @@ function propagate_2(model::Model, tmax, Sstart, Xstart)
     end
     return (S, X)
 end    
+
+function trajectories_2(model::Model, tmax, Sstart, Xstart)
+    # Advances the model in the initial state (Sstart, Xstart)
+    # for tmax time steps
+    # Keeps the full history of progression
+    X = Xstart
+    S = Sstart
+
+    XFull = Xstart
+    SFull = Sstart
+    
+    graph = model.graph
+    scale = model.scale
+    mtd = model.method
+    for tau in 1:(tmax - 1)
+        DX = step_rate_2(graph, mtd, S, X).*scale
+        update_2!(S, X, DX)
+        XFull = [XFull X]
+        SFull = [SFull S]        
+    end
+    return (SFull, XFull)
+end    
+
+function cut_2(model, s, x)
+    # This should be some kind of energy function for Model II
+    phix = 0
+    graph = model.graph
+    for edge in edges(graph)
+        phix += s[edge.src]*s[edge.dst]*abs(x[edge.src] - x[edge.dst])/2
+    end
+    return Dice.cut(graph, s) + phix
+end
+
+function cut_2(model, distr::Tuple)
+    return cut_2(model, distr[1], distr[2])
+end
 
 function coupling_model_2(x1, x2, gamma = 0.0)
     dd = x1 - x2
