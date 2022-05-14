@@ -802,8 +802,7 @@ end
 """
     get_best__cut(graph, V)
 
-    Find the best cut produced by configuration `V` on `graph` by following
-the CirCut algorithm.
+    Find the best cut produced by configuration `V` on `graph`.
 
     INPUT:
         graph - the model graph
@@ -969,10 +968,8 @@ function get_initial_2(Nvert::Integer, (vmin, vmax), p=0.5)
     # representation with the continuous component uniformly distributed
     # in the (vmin, vmax) interval
 
-    sigma = get_random_configuration(Nvert, p)
-    xs = get_initial(Nvert, (vmin, vmax))
-
-    return (sigma, xs)
+    return realign_2((get_random_configuration(Nvert, p),
+                      get_initial(Nvert, (vmin, vmax))))
 end
 
 function randnode(nvert)
@@ -1065,9 +1062,26 @@ function local_search(graph, conf)
     return conf
 end
 
+"""
+    local_search!(graph, conf)
+
+Enforce the node majority rule in `conf` on `graph`, while changing
+`conf` in-place.
+
+This implements the 1-opt local search. It checks the nodes whether the
+number of adjacent uncut edges exceeds the number of cut edges. If it does,
+the node is flipped. It produces a configuration, which does not have
+configurations yielding better cut within the Hamming distance one.
+
+INPUT:
+    graph - the graph object
+    conf - {-1, 1}^N - the initial configuration
+
+OUTPUT:
+    count - the total number of flips
+    `conf` is displaced to a locally optimal configuration
+"""
 function local_search!(graph, conf)
-    # Eliminates vertices breaking the majority rule
-    # Changes the configuration in place and returns the number of passes
     nonstop = true
     count = 0
     while nonstop
@@ -1082,6 +1096,8 @@ end
 
 function local_twosearch(graph, conf)
     # Eliminates pairs breaking the edge-majority rule
+    # Attention, it changes conf
+    # TODO It's ideologically off and probably should be phased out
     nonstop = true
     while nonstop
         nonstop = false
