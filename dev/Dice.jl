@@ -409,12 +409,7 @@ end
 # sign(v)/2 for v \in [-2,2]
 function continuous_model_2(v)
     vreduced = mod(v + 2, 4) - 2
-
-    if vreduced < 0
-        return -1/2
-    else
-        return 1/2
-    end
+    return sign(vreduced)/2
 end
 
 function continuous_model_2(v1, v2)
@@ -715,7 +710,7 @@ end
 """
     get_best_rounding(graph, V)
 
-Find the best rounding (inspired by the CirCut algorithm)
+Find the best rounding of configuration `V` on `graph`
 Return the cut, the configuration, and the threshold (t_c)
 
 INPUT:
@@ -730,7 +725,7 @@ OUTPUT:
               bestleft - the left boundary of the rounding interval
 """
 function get_best_rounding(graph, V)
-
+    # The CirCut algorithm is modified to eliminate recalculating cut
     Nvert = nv(graph)
     # the width of the rounding interval
     d = 2 
@@ -783,20 +778,23 @@ function get_best_rounding(graph, V)
     return (bestcut, round_configuration(V, bestleft), bestleft)
 end
 
-function get_best_configuration(graph, V)
-    # Finds the best cut following the CirCut algorithm
-    # Returns the cut and the configuration
-    #
-    # INPUT:
-    #   graph
-    #   V - array with the voltage distribution assumed to be within [-2, 2]
-    #
-    # OUTPUT:
-    #   (bestcut, bestconf)
-    #           where
-    #               bestcut - the best cut found
-    #               bestconf - rounded configuration
+"""
+    get_best_configuration(graph, V)
 
+Find the best rounding of configuration `V` on `graph`
+Return the cut and the configuration
+
+INPUT:
+  graph
+  V - array with the voltage distribution assumed to be within [-2, 2]
+
+OUTPUT:
+  (bestcut, bestconf)
+          where
+              bestcut - the best cut found
+              bestconf - rounded configuration
+"""
+function get_best_configuration(graph, V)
     (becu, beco, beth) = get_best_rounding(graph, V)
     return (becu, beco)
 end
@@ -1664,7 +1662,8 @@ function conf_decay(graph, conf::Array, listlen=3)
 end
 
 function conf_decay_states(graph, conf::Array, listlen=3)
-    # Evaluates the eigenvalue and eigenvector of the most unstable excitation in configuration conf
+    # Evaluates the eigenvalue and eigenvector of the most unstable
+    # excitation in configuration conf
     #
     # INPUT:
     #   graph
