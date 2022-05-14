@@ -21,6 +21,7 @@
 #   5. Fix the chain of types
 #   6. Admit differenttial equations for continuous time machines
 #   7. Redesign: implement consistently the notion of functions on the graph
+#   8. Redesign: incorporate linear terms
 #
 # NOTE:
 # This is the version with explicitly defined functions for supporting
@@ -62,7 +63,7 @@ mutable struct Model
     graph::SimpleGraph
     # weights::Array
     method::Function # obsolete, phase out
-    # coupling function
+    # dynamical coupling function
     coupling::Function
     # energy kernel function
     energy::Function
@@ -322,7 +323,6 @@ function piecewise_local(v, Delta = 0.1)
     return out
  end
 
-
 function piecewise(v1, v2, Delta = 0.1)
     return piecewise_local(v1 - v2, Delta)
 end
@@ -447,19 +447,27 @@ function roundup(V)
     return mod.(V .+ 2, 4) .- 2
 end
 
-function separate(Vinp, r = 0)
-    # Discretize a skewed distribution in the model II context
-    # INPUT:
-    #        Vinp - array to process
-    #        r - the rounding center
-    #
-    # OUTPUT:
-    #        sigmas - integer arrays of binary spins (\pm 1)
-    #        xs - array of displacements [-1, 1]
+"""
+    separate(Vinput, rounding = 0)
 
+Separate the discrete and continuous components of the given distribution
+according to V = sigma + X + r, where sigma in {-1, +1}^N, X in [-1, 1)^N,
+and -2 < r < 2 is the rounding center.
+
+INPUT:
+    Vinp - array to process
+    r - the rounding center
+
+OUTPUT:
+    sigmas - integer arrays of binary spins (-1, +1)
+    xs - array of displacements [-1, 1)
+"""
+function separate(Vinp, r = 0)
     V = mod.(Vinp .- r .+ 2, 4) .- 2
-    sigmas = Int.(0 .* V)
-    xs = 0 .* V
+    sigmas = zeros(Int, size(V))
+    xs = zeros(size(V))
+    # sigmas = sgn(V) # with sgn(0) := 1
+    # xs = V - sigmas
     for i in 1:length(V)
         Vred = V[i]
         (sigmas[i], xs[i]) =
@@ -472,11 +480,19 @@ function separate(Vinp, r = 0)
     return (sigmas, xs)
 end
 
+"""
+    combine(s, x, r = 0)
+
+Recover the dynamic variables from the separated representation.
+
+INPUT:
+    s - the {-1, 1} array containing the discrete component
+    x - the array with the continuous component
+    r - the rounding center (default = 0)
+"""
 function combine(s, x, r = 0)
-    # Recover xi from the separated representation
     return x .+ s .+ r
 end
-
 
 """
     HammingD(s1, s2)
@@ -510,10 +526,23 @@ function EuclidD(V1, V2)
     return sum((V1 .- V2).^2)
 end
 
+"""
+    integer_distribution(arr)
+
+Evaluate a discrete (over integers) distribution function inferred from
+the provided sample `arr`.
+
+For each integer in [mininum(arr), maximum(arr)], the function counts
+the number of incidences.
+
+INPUT:
+    arr - empirical sample of the distribution function
+
+OUTPUT:
+    x - values sampled in `arr`
+    p(x) - occurence probabilities
+"""
 function integer_distribution(arr)
-    # Evaluate a discrete (over integers) distribution function
-    # from the provided sample `arr`
-    # Return two arrays: x, p(x)
 
     vals = []
     pval = []
@@ -597,16 +626,20 @@ function cluster_variance(V, interval)
     return [ni, av, sqrt(var)]
 end
 
-function H_Ising(graph, conf)
-    # Evaluates the Ising energy for the given graph and configuration
-    #
-    # INPUT:
-    #   graph - Graphs object
-    #   conf - configuration array with elemnts \pm 1
-    #
-    # OUTPUT:
-    #   conf * A * conf /2 energy
+"""
+    H_Ising(graph, conf)
 
+Evaluate the Ising energy for the provided `graph` and configuration `conf`.
+
+INPUT:
+      graph - Graphs object
+      conf - configuration array from {-1, 1}^N
+    
+OUTPUT:
+      energy = conf * A * conf /2 
+"""
+function H_Ising(graph, conf)
+ 
     en = 0
     for edge in edges(graph)
         en += conf[edge.src]*conf[edge.dst]
@@ -628,8 +661,7 @@ OUTPUT:
 function cut(graph, conf)
 
     if nv(graph) != length(conf)
-        num = conf_to_number(conf)
-        println("ERROR: The configuration $num and the vertex set have different size")
+        println("ERROR: The configuration size $(length(conf)) and the graph size $(nv(graph)) do not match")
     end
 
     out = 0
@@ -769,17 +801,21 @@ function get_best_configuration(graph, V)
     return (becu, beco)
 end
 
-function get_best_cut(graph, V)
-    # Finds the best cut following the CirCut algorithm
-    # Returns the cut
-    #
-    # INPUT:
-    #   graph
-    #   V - array with the voltage distribution assumed to be within [-2, 2]
-    #
-    # OUTPUT:
-    #   bestcut - the best cut found
+"""
+    get_best__cut(graph, V)
 
+    Find the best cut produced by configuration `V` on `graph` by following
+the CirCut algorithm.
+
+    INPUT:
+        graph - the model graph
+        V - array with the voltage distribution assumed to be within [-2, 2]
+            as produced by function `roundup`
+    
+    OUTPUT:
+        bestcut - the best cut found
+"""
+function get_best_cut(graph, V)
     (becu, beco, beth) = get_best_rounding(graph, V)
     return becu
 end
@@ -917,7 +953,7 @@ end
 function randvector(len::Integer, p=0.5)
     # A Bernoulli sequence of length len
     # Can be used for generating random binary distributions
-    # NOTE: OBSOLETE
+    # NOTE: OBSOLETE use `get_random_configuration'.
     return [randspin(p) for i in 1:len]
 end
 
@@ -1098,7 +1134,7 @@ OUTPUT:
     conf - a binary array {-1, 1}^N, where N = length(V)
 
 NOTE:
-The function looks for points inside (L + 2], where L is chosen such
+The function looks for points inside (L, L + 2], where L is chosen such
 that there is no wrapping of the rounding interval. This is determined
 by whether leftstop + 2 <= 2 or not. Thus, if leftstop < 0, then
 L = leftstop, otherwise L = leftstop - 2 and the points inside (L + 2]
@@ -1133,7 +1169,7 @@ function extract_configuration(V::Array, center)
     #
     # where P=4 is the period
     #
-    #
+     #
     # INPUT:
     #   V - data array (is presumed to be rounded and within [-2, 2])
     #   center - the rounding center
@@ -1429,6 +1465,17 @@ function propagate_extended(model::Model, duration, Vini, Rini)
                               Ks, one_method, Rini)
 end
 
+"""
+    energy (model, V)
+
+Evaluate the coupling energy given distribution `V` in `model`.
+
+The function uses the `energy` method of the `model` for finding the
+coupling energy between pairs of nodes.
+
+NOTE: This feature makes it ill-suited for treating local contributions
+(anisotropy, field-like and such).
+"""
 function energy(model::Model, V::Array)
     # Evaluates the coupling energy corresponding to V
     # Note: this is essential that this energy evaluates only coupling energy
@@ -1444,7 +1491,15 @@ function energy(model::Model, V::Array)
     return en
 end
 
-## Model II explicit functions
+## Functions for separated representation
+
+function realign_2(conf)
+    # Changes the reference point for the separated representation
+    # INPUT & OUTPUT:
+    #     conf = (sigma, X)
+    V = Dice.combine(conf[1], conf[2])
+    return Dice.separate(V, sum(V)/length(V))
+end
 
 function update_2!(spins, xs, dx)
     # Update the continuous component (xs) by dx using the wrapping rule
@@ -1469,13 +1524,26 @@ function update_2!(spins, xs, dx)
     return count
 end
 
-function step_rate_2(graph::SimpleGraph, method::Function, s, x)
+function step_rate_2(graph::SimpleGraph, coupling::Function, s, x)
     out = zeros(length(x))
     for node in vertices(graph)
         xnode = x[node]
         snode = s[node]
         for neib in neighbors(graph, node)
-            out[node] += snode*s[neib]*method(xnode, x[neib])
+            out[node] += snode*s[neib]*coupling(xnode, x[neib])
+        end
+    end
+    return out
+end
+
+function step_rate_2_01(graph::SimpleGraph, coupling::Function, s, x)
+    # Supports propagation in {0, 1}-weighted isotropic graphs
+    out = zeros(length(x))
+    for node in vertices(graph)
+        xnode = x[node]
+        snode = s[node]
+        for neib in neighbors(graph, node)
+            out[node] += snode*s[neib]*coupling(xnode, x[neib])
         end
     end
     return out
@@ -1520,6 +1588,10 @@ end
 
 function cut_2(model, s, x)
     # This should be some kind of energy function for Model II
+    # Evaluages the cut function for Model II:
+    # C_2(sigma, X) = C(sigma) + \Delta C_2(sigma, X)
+    # where C(\sigma) is the cut given by the binary component
+    # and \Delta C_2 = \sum_{m,n} A_{m,n} s_m s_n |x_m - x_n|/2
     phix = 0
     graph = model.graph
     for edge in edges(graph)
