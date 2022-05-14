@@ -1,3 +1,8 @@
+# Demonstrates that an Ising machine based on the anisotropic
+# Kuramoto model degrades with the anisotropy magnitude
+# Can run as a standalone julia script or as an org-file
+# in Emacs with package `jupyter` installed
+
 # +begin_src jupyter-julia
 using LightGraphs
 using GraphPlot
@@ -10,8 +15,9 @@ println("Loading complete")
 
 
 # +begin_src jupyter-julia
-push!(LOAD_PATH, "../dev")
-using Dice
+# Uses the frozen version of the Dice library
+# May be incompatible with the current development verion
+include("DiceBasic.jl")
 # +end_src
 
 # +begin_src jupyter-julia 
