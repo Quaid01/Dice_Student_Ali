@@ -878,7 +878,6 @@ function get_best_cut_traced(graph, V)
     return (DeltaC, rk)
 end
 
-## Random rounding
 """
     get_random_rounding(graph, V, trials = 10)
 
@@ -957,6 +956,27 @@ function randvector(len::Integer, p=0.5)
     return [randspin(p) for i in 1:len]
 end
 
+function get_initial(Nvert::Integer, (vmin, vmax))
+    # Generate random vector with Nvert components uniformly distributed
+    # in the (vmin, vmax) interval
+
+    bot, top = minmax(vmin, vmax)
+    mag = top - bot
+
+    return mag .* rand(Float64, Nvert) .+ bot
+end
+
+function get_initial_2(Nvert::Integer, (vmin, vmax), p=0.5)
+    # Generate random configuration of length `Nvert` in the separated
+    # representation with the continuous component uniformly distributed
+    # in the (vmin, vmax) interval
+
+    sigma = get_random_configuration(Nvert, p)
+    xs = get_initial(Nvert, (vmin, vmax))
+
+    return (sigma, xs)
+end
+
 function randnode(nvert)
     # Returns a random number in [1, nvert]
     return rand(tuple(1:nvert...))
@@ -976,16 +996,19 @@ end
 # TODO: make a universal version
 include("hf.jl")
 
-function flipconf(conf, flip)
-    # Changes configuration conf according to flips in the index array flip
-    #
-    # INPUT:
-    #   conf - {+1, -1}^N array containing the original string
-    #   flip - array with indices where conf should be modified
-    #
-    # OUTPUT:
-    #   a string at the H-distance length(flip) from conf
-    #
+"""
+    flipconf(conf, flip)
+
+Change configuration `conf` according to flips in the index array `flip`
+    
+INPUT:
+    conf - {+1, -1}^N array containing the original string
+    flip - array with indices where conf should be modified
+
+OUTPUT:
+    a string at the H-distance sum(flip) from conf
+"""
+function flipconf(conf, flip)    
     # Q: isn't this conf[flip] .*= -1?
 
     for ind in flip
@@ -1205,17 +1228,6 @@ function get_connected(Nvert, prob)
     end
     return G
 end
-
-function get_initial(Nvert::Integer, (vmin, vmax))
-    # Generate random vector with Nvert components uniformly distributed
-    # in the (vmin, vmax) interval
-
-    bot, top = minmax(vmin, vmax)
-    mag = top - bot
-
-    return mag .* rand(Float64, Nvert) .+ bot
-end
-
 
 ##########################################################
 #
