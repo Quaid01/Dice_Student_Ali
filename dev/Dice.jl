@@ -1110,9 +1110,22 @@ function local_twosearch(graph, conf)
     return conf
 end
 
+"""
+    local_twosearch!(graph, conf)
+
+Eliminate in-place pairs in configuration `conf' breaking the edge majority
+rule on `graph'. Return the number of passes.
+
+The configuration is presumed to satisfy the node majority rule.
+
+INPUT:
+    graph - the graph object
+    conf - {0,1}^N array
+
+OUTPUT:
+    How many times the set of vertices was traversed.
+"""
 function local_twosearch!(graph, conf)
-    # Eliminates pairs breaking the edge-majority rule
-    # Changes the configuration in place and returns the number of passes
     nonstop = true
     count = 0
     while nonstop
