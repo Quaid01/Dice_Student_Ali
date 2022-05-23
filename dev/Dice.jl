@@ -210,222 +210,23 @@ function dumpGraph(G, filename)
     end
 end
 
+
+function dumpDistribution(P, filename)
+    # P is a tuple (x, Px) as, for instance, produced by the integer distribution
+    open(filename, "w") do out
+        for i in 1:length(P[1])
+            println(out, P[1][i], " ", P[2][i])
+        end
+    end
+end
+
 ############################################################
 #
 ### A library of coupling functions (TODO: detach?)
 #
 ############################################################
 
-function none_method(v)
-    return 0 * v  # for the type stability thing
-end
-
-function none_method(v1, v2)
-    return 0 * v1  # for the type stability thing
-end
-
-const Pi2 = pi / 2
-const Pi4 = pi / 4
-
-"""
-    cosine(v)
-
-The coupling energy inducing the XY-model (rank-2 relaxation).
-"""
-function cosine(v)
-    return cos.(Pi2 .* v)
-end
-
-function sine(v)
-    return sin.(Pi2 .* v)
-end
-
-function sine(v1, v2)
-    return sine(v1 - v2)
-end
-
-function linear(v1, v2)
-    return v1 - v2
-end
-
-function dtri(v)
-    # the derivative of the triangular function
-    p = Int.(floor.(v ./ 2 .+ 1 / 2))
-    parity = rem.(abs.(p), 2)
-    return -2 .* parity .+ 1
-end
-
-function triangular(v)
-    # Odd piece-wise linear defined within the period [-2, 2] by
-    # phi(-2) = phi(0) = phi(2) = 0
-    # - phi(-1) = phi(1) = 1
-    # This works for both scalars and vectors 
-    p = Int.(floor.(v ./ 2 .+ 1 / 2))
-    parity = rem.(abs.(p), 2)
-    return (v .- p .* 2) .* (-2 .* parity .+ 1)
-end
-
-function triangular_mod(v)
-    # Odd piece-wise linear defined within the period [-2, 2] by
-    # phi(-2) = phi(0) = phi(2) = 0
-    # - phi(-1) = phi(1) = 1
-    # this is slightly slower than triangular(v) above because of the mod
-    # but looks easier to understand
-    vr = mod.(v .+ 1, 4) .- 1
-    return vr .+ min.(0 .* vr, -vr .+ 1).*2
-end
-
-function triangular(v1, v2)
-    return triangular(v1 - v2)
-end
-
-const pwDELTA = 0.1
-# const pwPERIOD = 4.0
-
-"""
-    piecewise_generic(v, Delta = 0.1)
-
-Evaluate piece-wise linear odd periodic ([-2, 2]) skewed triangular
-function of the vector argument `v` that equals to 0 at 0 and 2 and
-to 1 at 1 + Delta.
-"""
-function piecewise_generic(v, Delta = 0.1)
-    # This version is slow but generic
-    vbar = mod.(v .+ 2, 4) .- 2
-    s = sign.(vbar)
-    vbabs = s.*vbar
-
-    ind = vbabs .> 1 + Delta
-    out = vbabs./(1 + Delta) - 2 .* ind.*(vbabs .- (1 + Delta))./(1 - Delta^2)
-
-    return s .* out
-end
-
-function piecewise_local(v, Delta = 0.1)
-    # this version relies on the small variation of v
-    # TODO: make it decent
-    vabs = abs(v)
-    out =
-        if vabs < 1 + Delta
-            sign(v)/(1+Delta)*vabs
-        else
-            if vabs < 3 - Delta
-                -sign(v)/(1 - Delta)*(vabs - 2)
-            else
-                if vabs < 5 + Delta
-                    sign(v)/(1+Delta)*(vabs - 4)
-                else
-                    # add one more step?
-                    piecewise_generic(v, Delta)
-                end
-            end
-        end
-    return out
- end
-
-function piecewise(v1, v2, Delta = 0.1)
-    return piecewise_local(v1 - v2, Delta)
-end
-
-function square(v)
-    return dtri(v .+ 1)
-end
-
-function square(v1, v2)
-    return square(v1 - v2)
-end
-
-function bilinear(v1, v2)
-    return -dtri(v1) .* triangular(v2)
-end
-
-function bisine(v1, v2)
-    return -Pi2 .* cos(Pi2 .* v1) .* triangular(Pi2 .* v2)
-end
-
-function squarishk(v, k=10)
-    return tanh.(k .* triangular(v))
-end
-
-function squarish(v1, v2, k=10)
-    return squarishk(v1 - v2, k)
-end
-
-# this really should be a model parameter
-const stW = 0.55 * 2
-
-function skew_triangular(v)
-    c1 = 1 / (stW * (stW - 2))
-
-    vbar = mod.(v .+ 2, 4) .- 2
-    s = sign.(vbar)
-    svbar = s .* vbar
-    ind = sign.(svbar .- stW)
-
-    mid = (svbar .* (stW - 1) .- stW) .* c1
-    Delta = (svbar .- stW) .* c1
-
-    out = Delta .* ind .+ mid
-    return s .* out
-end
-
-function skew_triangular(v1, v2)
-    return skew_triangular(v1 - v2)
-end
-
-#
-# Continuous representation models
-#
-
-function continuous_model_1(v1, v2)
-    return -dtri(v1).*triangular(v2)
-end
-
-function dtri_cont(v, s)
-    # scalar version only
-    vreduced = mod(v + 2, 4) - 2
-    vabs = abs(vreduced)
-    m = 2/(2 - s)
-    out =
-        if vabs < 1 - s
-            m
-        elseif vabs <= 1 + s
-            (1 - vabs)*m/s
-        else
-            -m
-        end
-    return out
-end
-
-function continuous_model_1_cont(v1, v2, s = 0.1)
-    # change rate in Model 1 with continuous derivative
-    # s is the half-width of the transitional region between -1 and 1
-    # v1 is presumed to be scalar
-    # noticeably slower
-    return -dtri_cont(v1, s).*triangular(v2)
-end
-
-# For model 2 (rank-2 GW-representation), the coupling function is
-# sign(v)/2 for v \in [-2,2]
-function continuous_model_2(v)
-    vreduced = mod(v + 2, 4) - 2
-    return sign(vreduced)/2
-end
-
-function continuous_model_2(v1, v2)
-    return continuous_model_2(v1 - v2)
-end
-
-# The cut counting function for model II
-# For v in [-2, 2], Phi(v) = |v|/2
-function continuous_model_2_energy(v)
-    vreduced = mod(v + 2, 4) - 2
-    return abs(vreduced)/2
-end
-
-function continuous_model_2_energy(v1, v2)
-    return continuous_model_2_energy(v1 - v2)
-end
+include("methods.jl")
 
 ############################################################
 #
@@ -461,7 +262,7 @@ function separate(Vinp, r = 0)
     V = mod.(Vinp .- r .+ 2, 4) .- 2
     sigmas = zeros(Int, size(V))
     xs = zeros(size(V))
-    # sigmas = sgn(V) # with sgn(0) := 1
+    # sigmas = sgn(V - r) # with sgn(0) := 1
     # xs = V - sigmas
     for i in 1:length(V)
         Vred = V[i]
@@ -667,14 +468,14 @@ function cut(graph, conf)
 end
 
 """
-    cut(model, conf, binflag)
+    cut(model, conf, isbinary)
 
 Evaluate the cut value for the given model and binary configuration
 
 INPUT:
     model - Dice's model
     conf - binary configuration array with elemnts ± 1
-    binflag - (true, false) If true (default), evaluate non-weighted cut
+    isbinary - (true, false) If true (default), evaluate non-weighted cut
 
 OUTPUT:
     (currently) sum_e (1 - e1. e.2)/2
@@ -683,13 +484,41 @@ OUTPUT:
 TODO:
     1. Implement supporting model's weights
 """
-function cut(model::Model, conf, binflag = true)
-    if binflag
+function cut(model::Model, conf, isbinary = true)
+    # TODO
+    # What this implementation of the cut function should do
+    # cut(model, configuration, isbinary)
+    # if isbinary is set, treat conf as a binary array and use
+    # the "standard" cut
+    # if isbinary is false, treat conf as a continuous array
+    # and use the model's energy method for evaluating cut
+    if isbinary
         return cut(model.graph, conf)
     else # TODO: weighted cut
         return -1
     end
 end
+
+# it should be
+# cut_2(model, (s,x), isbinary)
+# The idea is that it should use the standard pair (s, x), which
+# is returned by other *_2 functions
+# if isbinary = False (default) use model.energy method
+# otherwise use the discrete part in the usual cut function
+# 
+# function cut_2(model, s, x)
+#     # This should be some kind of energy function for Model II
+#     # Evaluages the cut function for Model II:
+#     # C_2(sigma, X) = C(sigma) + \Delta C_2(sigma, X)
+#     # where C(\sigma) is the cut given by the binary component
+#     # and \Delta C_2 = \sum_{m,n} A_{m,n} s_m s_n |x_m - x_n|/2
+#     phix = 0
+#     graph = model.graph
+#     for edge in edges(graph)
+#         phix += s[edge.src]*s[edge.dst]*abs(x[edge.src] - x[edge.dst])/2
+#     end
+#     return Dice.cut(graph, s) + phix
+# end
 
 function get_rate(VFull)
     # Evaluates the magnitude of variations (discrete time derivative)
@@ -817,19 +646,23 @@ function get_best_cut(graph, V)
     return becu
 end
 
-function get_best_cut_traced(graph, V)
-    # Produce the sequence of cut variations obtained while moving
-    # the rounding center
-    #
-    # INPUT:
-    #   graph
-    #   V - array with the voltage distribution assumed to be within [-2, 2]
-    #
-    # OUTPUT:
-    #   (DeltaC, rk) - tuple of two arrays
-    #         DeltaC - the array of the cut variations
-    #         rk      - the array of rounding centers
+"""
+    get_best_cut_traced(graph, V)
 
+Produce the sequence of cut variations obtained while moving the
+rounding center according to the algorithm of looking for the best
+rounding.
+
+INPUT:
+  graph - the graph object
+  V - array with the voltage distribution assumed to be within [-2, 2]
+
+OUTPUT:
+  (DeltaC, rk) - tuple of two arrays
+        DeltaC - the array of the cut variations
+        rk      - the array of rounding centers
+"""
+function get_best_cut_traced(graph, V)
     Nvert = nv(graph)
     d = 2
 
@@ -1239,7 +1072,30 @@ function extract_configuration(V::Array, center)
     return out
 end
 
+### Graph generation
+#
+# These are simple wrappers for functions from Graphs ensuring that the
+# graphs are connected (for Erdos-Renyi, Graphs may return disconnected graph).
+
 function get_connected(Nvert, prob)
+    # Generate a connected Erdos-Renyi graph with `Nvert` vertices and
+    # `prob` density of edges
+    # More precisely. On the set of edges of a complete graph
+    # K_{Nvert}, we have a (Bernoulli process) function F, which takes
+    # values 1 and 0 with probabilities prob and 1 - prob, respectively.
+    # The output graph is a connected subgraph of K_{Nvert} with
+    # only edges where F = 1 kept in the set of edges.
+    # NOTE Obsolete See get_ER_graph
+    cnct = false
+    G = Graph()
+    while !cnct
+        G = erdos_renyi(Nvert, prob)
+        cnct = is_connected(G)
+    end
+    return G
+end
+
+function get_ER_graph(Nvert, prob)
     # Generate a connected Erdos-Renyi graph with `Nvert` vertices and
     # `prob` density of edges
     # More precisely. On the set of edges of a complete graph
@@ -1251,6 +1107,17 @@ function get_connected(Nvert, prob)
     G = Graph()
     while !cnct
         G = erdos_renyi(Nvert, prob)
+        cnct = is_connected(G)
+    end
+    return G
+end
+
+function get_ER_graph(Nvert, degree)
+    # Generate a random connected `degree'-regular graph with `Nvert` vertices
+    cnct = false
+    G = Graph()
+    while !cnct
+        G = random_regular_graph(Nvert, degree)
         cnct = is_connected(G)
     end
     return G
