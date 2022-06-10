@@ -44,6 +44,7 @@ using Graphs
 using SparseArrays
 
 export Model,
+    loadDumpedGraph, dumpGraph, 
     get_connected, get_initial,
     get_random_configuration,
     sine, triangular,
@@ -884,7 +885,8 @@ end
 function local_search(graph, conf)
     # Eliminates vertices breaking the majority rule
     # Attention, it changes conf
-    # TODO It's ideologically off and probably should be phased out
+    # While it's ideologically off, it is useful for functional
+    # constructions like cut(graph, local_search(graph, conf))
     nonstop = true
     while nonstop
         nonstop = false
@@ -930,7 +932,6 @@ end
 function local_twosearch(graph, conf)
     # Eliminates pairs breaking the edge-majority rule
     # Attention, it changes conf
-    # TODO It's ideologically off and probably should be phased out
     nonstop = true
     while nonstop
         nonstop = false
@@ -1095,7 +1096,7 @@ function get_connected(Nvert, prob)
     return G
 end
 
-function get_ER_graph(Nvert, prob)
+function get_ER_graph(Nvert::Integer, prob::Float64)
     # Generate a connected Erdos-Renyi graph with `Nvert` vertices and
     # `prob` density of edges
     # More precisely. On the set of edges of a complete graph
@@ -1400,11 +1401,21 @@ end
 ## Functions for separated representation
 
 function realign_2(conf)
-    # Changes the reference point for the separated representation
+    # Changes the reference point for the separated representation to
+    # cancel its average in the continuous representation
     # INPUT & OUTPUT:
     #     conf = (sigma, X)
     V = Dice.combine(conf[1], conf[2])
     return Dice.separate(V, sum(V)/length(V))
+end
+
+function realign_2(conf, r)
+    # Changes the reference point for the separated representation by `r`
+    # according to xi - r = sigma(r) + X(r)
+    # INPUT & OUTPUT:
+    #     conf = (sigma, X)
+    V = Dice.combine(conf[1], conf[2])
+    return Dice.separate(V, r)
 end
 
 function update_2!(spins, xs, dx)
