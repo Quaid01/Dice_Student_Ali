@@ -1,0 +1,18 @@
+max      ................ obj     : max or min
+cut      ................ task    : cut or bis (bisection)
+0        ................ plevel  : printout leval: 0, 1 or 2
+1        ................ init    : initialize t  : 0, 1 or 2
+100        ................ npert   : No. perturbed restarts >= 0
+75        ................ multi   : No. of multiple starts >= 1
+1.e-4    ................ tolf    : tol for relative f-change
+1.e-4    ................ tolg    : tol for weighted g-norm
+0.20     ................ pert    : perturbations from a cut
+0.00     ................ rho     : penalty parameter for bis
+350      ................ maxiter : maximum iteration number
+4.0      ................ maxstep : maximum steplength allowed 
+T        ................ locsch  : whether local search or not
+F        ................ savecut : save the   cut    x: T or F
+F        ................ savesol : save the solution t: T or F
+----------------------------------------------------------------
+    This file contains the parameter values.
+     The above order should not be changed.

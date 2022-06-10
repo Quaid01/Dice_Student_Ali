@@ -1,0 +1,22 @@
+#+TITLE: Simulations for the paper on the triangular model
+#+AUTHOR: Misha Erementchouk
+#+EMAIL: merement@gmail.com
+#+DATE: 
+#+OPTIONS: tex: t LaTeX: t toc:nil ^:{}
+#+KEYWORDS:
+#+DESCRIPTION:
+
+Files for generating and processing data for the paper on the triangular model:
+
+1. ~DiceBasic.jl~ -- an abridged version of the Dice module
+2. ~generate_samples.jl~ -- the script for generating ER graphs
+3. ~samples.ini~ -- the configuration file for generating the family of the
+   graphs presented in the paper
+4. ~circut-run.fish~ -- a =fish= script running =Circut= on the ER family of graphs
+5. ~param~ -- the =Circut= parameters
+6. ~process-circut.py~ -- script collecting =Circut='s data
+7. ~scaling_hybrid_opt.jl~ -- running the triangular model on the ER family
+   of graphs
+8. ~Gset_simulation_data~ -- the results of processing =G-Set= graphs
+9. ~g_tests_bare.jl~ -- straightforward processing of the =G-Set= graphs
+10. ~g_tests_hybrid_opt.jl~ -- optimizing =G-Set= processing
