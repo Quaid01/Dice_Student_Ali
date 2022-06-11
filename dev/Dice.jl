@@ -54,7 +54,8 @@ export Model,
     propagate, roundup,
     test_branch, scan_vicinity, scan_for_best_configuration,
     conf_decay,
-    local_search, local_twosearch
+    local_search, local_twosearch,
+    local_search!, local_twosearch!
 
 # The main type describing the Model
 # For a compact description of simulation scenarios and controlling the
@@ -913,7 +914,7 @@ INPUT:
     conf - {-1, 1}^N - the initial configuration
 
 OUTPUT:
-    count - the total number of flips
+    count - the total number of passes
     `conf` is displaced to a locally optimal configuration
 """
 function local_search!(graph, conf)
@@ -1113,7 +1114,7 @@ function get_ER_graph(Nvert::Integer, prob::Float64)
     return G
 end
 
-function get_ER_graph(Nvert, degree)
+function get_regular_graph(Nvert, degree)
     # Generate a random connected `degree'-regular graph with `Nvert` vertices
     cnct = false
     G = Graph()
