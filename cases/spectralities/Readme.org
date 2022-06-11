@@ -1,4 +1,16 @@
-* Spectra, instabilities and max-cuts
+#+title: Spectra, instabilities and max-cuts
+
+* Full bibliographical record
+
+Mikhail Erementchouk, Aditya Shukla, Pinaki Mazumder,
+
+On computational capabilities of Ising machines based on nonlinear
+oscillators, Physica D: Nonlinear Phenomena, Volume 437, 133334, 2022, ISSN
+0167-2789, https://doi.org/10.1016/j.physd.2022.133334.
+
+(https://www.sciencedirect.com/science/article/pii/S0167278922001075)
+
+* Supporting files for paper 
 
 =m8-degradation.jl= --- the code used for preparing the figure showing
 the variation of instabilities in connected Erdos-Renyi graphs.
