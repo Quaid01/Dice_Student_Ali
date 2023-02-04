@@ -206,8 +206,6 @@ function rank_2_SDP_static_2(v)
     return sin(PI4*v)^2
 end
 
-#function triangular_2()
-
 # For model 2 (rank-2 GW-representation), the coupling function is
 # sign(v)/2 for v \in [-2,2]
 function continuous_model_2(v)
@@ -228,4 +226,24 @@ end
 
 function continuous_model_2_energy(v1, v2)
     return continuous_model_2_energy(v1 - v2)
+end
+
+function coupling_model_2(x1, x2, gamma = 0.0)
+    dd = x1 - x2
+    return sign(dd) + gamma*dd
+end
+
+
+## Noise generators
+
+function noiseUniform(L::Int)::Array{Float64, 1}
+    # uniform distribution in interval [-1, 1]
+    # returns vector of length L
+    return rand(Uniform(-1, 1), L)
+end
+
+function noiseNormal(L::Int)::Array{Float64, 1}
+    # normal distribution with zero mean and unit variance
+    # returns vector of length L
+    return rand(Normal(0, 1), L)
 end
