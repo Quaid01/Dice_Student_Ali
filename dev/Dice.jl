@@ -968,19 +968,6 @@ function local_search!(graph, conf::Array{Int8, 1})
     return count
 end
 
-function local_search!(graph, conf::Array{Int8, 1})
-    nonstop = true
-    count = 0
-    while nonstop
-        count += 1
-        nonstop = false
-        for node in vertices(graph)
-            nonstop |= majority_flip!(graph, conf, node)
-        end
-    end
-    return count
-end
-
 function local_twosearch(graph, conf::Array{Int8, 1})
     # Eliminates pairs breaking the edge-majority rule
     # Attention, it changes conf
@@ -1518,10 +1505,10 @@ function step_rate_2(graph::SimpleGraph, coupling::Function,
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
-        snode = s[node]
         for neib in neighbors(graph, node)
-            out[node] += snode*s[neib]*coupling(xnode, x[neib])
+            out[node] += s[neib]*coupling(xnode, x[neib])
         end
+        out[node] *= s[node]
     end
     noise_add::Array{Float64, 1} = Ns.*Noise(length(out))
     return out + noise_add
