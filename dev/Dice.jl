@@ -25,6 +25,7 @@
 #   6. Admit differenttial equations for continuous time machines
 #   7. Redesign: implement consistently the notion of functions on the graph
 #   8. Redesign: incorporate linear terms
+#   9. Error handling
 #
 # NOTE:
 # This is the version with explicitly defined functions for supporting
@@ -163,7 +164,7 @@ end
 ############################################################
 
 """
-Read graph in the "reduced" Matrixmarket format.
+Read graph in the simplified Matrixmarket format.
 
 Usage:
     G = loadDumpedGraph(filename::String)::SimpleGraph
@@ -174,38 +175,53 @@ INPUT:
 OUTPUT:
     SimpleGraph object
 
-The reduced format:
-    Header: lines starting with %
-    |V| |E|
-    u v w_{u,v}
+The simplified format:
+    Header: lines starting with % (such lines are ignored)
+    Descriptor:
+             The valid Matrix Market descriptors are
+             R C E - number of rows, columns, non-zero entries
+             N E - number of nodes, edges
+        |V| |E|
+    Content
+        u v w_{u,v}
 """
 function loadDumpedGraph(filename::AbstractString)::SimpleGraph
-    # TODO simple validation
-
-    mtxFile = open(filename, "r")
-    tokens = split(lowercase(readline(mtxFile)))
-    
-    # Skip commenting header
-    while tokens[1][1] == '%'
-        global tokens
-        tokens = split(lowercase(readline(mtxFile)))
+    # we drop the weight for now
+    # G = SimpleWeightedGraph(Nodes)
+    G = SimpleGraph()
+    open(filename, "r") do mtxFile
+        header = true
+        linecount = 0
+        for line in eachline(mtxFile)
+            line = lowercase(strip(line))
+            linecount += 1;
+            if isempty(line) || line[1] == '%'
+                continue
+            end
+            tokens = split(line)
+            if header
+                # the first content holding line is the shape descriptor
+                if length(tokens) < 2 || length(tokens) > 3
+                    error("In $filename:$linecount, the descriptor $line is invalid")  
+                end
+                Nodes, Edges = parse.(Int64, tokens[1:2])
+                G = SimpleGraph(Nodes)
+                header = false
+                continue
+            end
+            if length(tokens) < 2 || length(tokens) > 3
+                error("In $filename:$linecount, content line $line is invalid")  
+            end
+            u, v = parse.(Int64, tokens[1:2])
+            # if length(tokens) == 3
+            #     w = parse.(Int64, tokens[3])
+            # else
+            #     w = 1
+            # end
+            # add_edge!(G, u, v, w)
+            add_edge!(G, u, v)
+        end
     end
-
-    # Nodes, Edges = map((x) -> parse(Int64, x), tokens) # ?
-    Nodes, Edges = parse.(Int64, tokens)
-    G = SimpleGraph(Nodes)
-
-    for line in readlines(mtxFile)
-        global tokens
-        global countEdges
-        tokens = split(lowercase(line))
-        # we drop the weight for now
-        # u, v = map((x) -> parse(Int64, x), tokens[1:2]) # ?
-        u, v = parse.(Int64, tokens[1:2])
-        add_edge!(G, u, v)
-    end
-    close(mtxFile)
-
     return G
 end
 
