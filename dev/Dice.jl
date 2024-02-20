@@ -1,4 +1,4 @@
-# Dynamical Ising solver
+# A collection of functions used for simulating dynamical Ising solvers
 #
 # Here, the dynamical variables are regarded from the perspective of the
 # feasible configurations. Therefore, the Ising states are {-1, 1}^N,
@@ -42,11 +42,11 @@
 
 module Dice
 
-using Base:Integer
 using Arpack
 using Graphs
 using SparseArrays
 using Random, Distributions
+using Base:Integer
 
 export Model,
     loadDumpedGraph, dumpGraph, 
@@ -57,42 +57,43 @@ export Model,
     H_Ising, energy,
     number_to_conf, 
     propagate, roundup,
-    test_branch, scan_vicinity, scan_for_best_configuration,
+    test_branch, scan_for_best_configuration,
     conf_decay,
     local_search, local_twosearch,
     local_search!, local_twosearch!
 
+# Define the default level of logging verbosity
+# (reserved for future implementations)
+const silence_default = 3
+
 # The main type describing the Model
 # For a compact description of simulation scenarios and controlling the
 # module behavior
-const silence_default = 3
 mutable struct Model
     graph::SimpleGraph
     # weights::Array
-    method::Function # obsolete, phase out
-    # dynamical coupling function
-    coupling::Function
-    # energy kernel function
-    energy::Function
-    # Defines the magnitude of the exchange terms
-    # default = 1/Nvertices
-    scale::Float64
-    # The magnitude of the anisotropy term
-    # default = 0
-    Ks::Float64
-    # anisotropy function
-    # default = coupling(x, -x)
-    anisotropy::Function
-    # The magnitude of the noise term
-    # default = 0
-    Ns::Float64
-    # noise function
-    # default = noiseUniform
-    noise::Function
-    extended::Bool # Whether there is an extension (remove?)
-    # the inverse level of verbosity
-    # default = silence_default
-    silence::Integer 
+    method::Function     # obsolete, phase out (now, it's coupling)
+    coupling::Function   # dynamical coupling function
+    energy::Function     # energy kernel function
+    scale::Float64       # Defines the magnitude of the exchange terms
+                         # default = 1/Nvertices
+
+    Ks::Float64          # The magnitude of the anisotropy term
+                         # default = 0
+
+    anisotropy::Function # anisotropy function
+                         # default = coupling(x, -x)
+
+    Ns::Float64          # The magnitude of the noise term
+                         # default = 0
+
+    noise::Function      # noise function
+                         # default = noiseUniform
+
+    extended::Bool       # Whether there is an extension (remove?)
+    silence::Integer     # the inverse level of verbosity
+                         # default = silence_default
+
     Model() = new() 
 end
 
@@ -103,6 +104,7 @@ Model(graph, coupling) =
         M.graph = graph
         M.coupling = coupling
         M.method = M.coupling
+
         # temporary placeholder
         M.energy = M.coupling
         # The default interpretation of anisotropy
@@ -164,10 +166,9 @@ end
 ############################################################
 
 """
-Read graph in the simplified Matrixmarket format.
+    loadDumpedGraph(filename::AbstractString)::SimpleGraph
 
-Usage:
-    G = loadDumpedGraph(filename::String)::SimpleGraph
+Read graph in the simplified Matrixmarket format.
 
 INPUT:
     filename::String name of the file
@@ -186,14 +187,13 @@ The simplified format:
         u v w_{u,v}
 """
 function loadDumpedGraph(filename::AbstractString)::SimpleGraph
-    # we drop the weight for now
+    # TODO: support weights
     # G = SimpleWeightedGraph(Nodes)
     G = SimpleGraph()
     open(filename, "r") do mtxFile
         header = true
         linecount = 0
-        for line in eachline(mtxFile)
-            line = lowercase(strip(line))
+        for line in eachline(mtxFile) .|> strip .|> lowercase
             linecount += 1;
             if isempty(line) || line[1] == '%'
                 continue
@@ -202,22 +202,18 @@ function loadDumpedGraph(filename::AbstractString)::SimpleGraph
             if header
                 # the first content holding line is the shape descriptor
                 if length(tokens) < 2 || length(tokens) > 3
-                    error("In $filename:$linecount, the descriptor $line is invalid")  
+                    error("In $filename:$linecount, the descriptor $line is invalid")
                 end
-                Nodes, Edges = parse.(Int64, tokens[1:2])
+                Nodes, _ = parse.(Int64, tokens[1:2])
                 G = SimpleGraph(Nodes)
                 header = false
                 continue
             end
             if length(tokens) < 2 || length(tokens) > 3
-                error("In $filename:$linecount, content line $line is invalid")  
+                error("In $filename:$linecount, content line $line is invalid")
             end
             u, v = parse.(Int64, tokens[1:2])
-            # if length(tokens) == 3
-            #     w = parse.(Int64, tokens[3])
-            # else
-            #     w = 1
-            # end
+            # w = length(tokens) == 3 ? parse(Int64, tokens[3]) : 1
             # add_edge!(G, u, v, w)
             add_edge!(G, u, v)
         end
@@ -241,10 +237,18 @@ where `u` and `v` are the nodes numbers and `A_{u, v}` is the edge weight.
 function dumpGraph(G::SimpleGraph, filename::AbstractString)
     weight = 1
     open(filename, "w") do out
-        println(out, nv(G), " ", ne(G))
+        println(out, "$(nv(G)) $(ne(G))")
         for edge in edges(G)
-            println(out, edge.src, " ", edge.dst, " ", weight)
+            println(out, "$(edge.src) $(edge.dst) $weight")
         end
+    end
+end
+
+function dumpGraphConcole(G::SimpleGraph)
+    weight = 1
+    println("$(nv(G)) $(ne(G))")
+    for edge in edges(G)
+        println("$(edge.src) $(edge.dst) $weight")
     end
 end
 
@@ -282,14 +286,14 @@ function roundup(V::Array{Float64})
 end
 
 """
-    separate(Vinput::Array{Float64,1}, rounding = 0.0)
+    separate(V::Array{Float64,1}, r = 0.0)
 
 Separate the discrete and continuous components of the given distribution
-according to V = sigma + X + r, where sigma in {-1, +1}^N, X in [-1, 1)^N,
+according to V = sigma + X + r, where sigma ∈ {-1, +1}^N, X ∈ [-1, 1)^N,
 and -2 < r < 2 is the rounding center.
 
 INPUT:
-    Vinp - array to process
+    V - array to process
     r - the rounding center
 
 OUTPUT:
@@ -331,10 +335,10 @@ end
 """
     HammingD(s1::Array, s2::Array)
 
-Evaluate the Hamming distance between binary {-1, 1}-strings `s1` and `s2`
+Evaluate the Hamming distance between binary {-1, 1}-strings `s1` and `s2` of the same length.
 """
 function HammingD(s1::Array, s2::Array)
-    # Int(sum(round.(abs.(s1 - s2)./2)))
+    # assert(legnth(s1) == length(s2))
     count::Int64 = 0
     for i in 1:length(s1)
         if s1[i] != s2[i]
@@ -342,6 +346,7 @@ function HammingD(s1::Array, s2::Array)
         end
     end
     return count
+    # return - s1 .* s2 + length(s1)    
 end
 
 """
@@ -356,7 +361,6 @@ OUTPUT:
       Sum_v (V_1(v) - V_2(v))^2
 """
 function EuclidD(V1::Array{Float64, 1}, V2::Array{Float64, 1})
-
     return sum((V1 .- V2).^2)
 end
 
@@ -383,12 +387,13 @@ function integer_distribution(arr::Array{Int, 1})
     arr = sort(arr)
     NN = length(arr)
     ind = 1
-    while ind <= length(arr)
+    while ind <= NN
         val = arr[ind]
-        elems = findall(y -> y == val, arr)
+        elems = findall(y -> y == val, arr[ind:end])
         push!(vals, val)
         push!(pval, length(elems))
-        ind = elems[end] + 1
+        # search in a slice returns indices relative to the slice        
+        ind += elems[end]
     end
     return (vals, pval./NN)
 end
@@ -420,18 +425,17 @@ function c_variance(V, intervals)
     #   M x 3 array with the number of points, mean and variance of data
     #   inside the respective intervals
     #
-    # NOTE: it cannot process a single interval and does not treat folding intervals
+    # NOTE: cannot process a single interval and does not treat folding intervals
 
-    out = zeros(size(intervals)[1], size(intervals)[2] + 1)
+    out = zeros(size(intervals)[1], 3)
 
     for i in 1:(size(out)[1])
         ari = filter(t -> intervals[i,1] < t < intervals[i,2], V)
         ni = length(ari)
         av = sum(ari) / ni
         var = sum((ari .- av).^2) / ni
-        out[i, 1] = ni
-        out[i, 2] = av
-        out[i, 3] = sqrt(var)
+
+        out[i, :] = [ni, av, sqrt(var)]
     end
 
     return out
@@ -609,7 +613,6 @@ OUTPUT:
               bestleft - the left boundary of the rounding interval
 """
 function get_best_rounding(graph, V)
-    # The CirCut algorithm is modified to eliminate recalculating cut
     Nvert = nv(graph)
     # the width of the rounding interval
     d = 2 
@@ -648,7 +651,7 @@ function get_best_rounding(graph, V)
             stop += 1
         end
 
-        # Now, we evaluate the cut variation
+        # Accumulate the current value of cut
         for j in neighbors(graph, flipped)
             runcut += runconf[flipped]*runconf[j]
         end
@@ -679,7 +682,7 @@ OUTPUT:
               bestconf - rounded configuration
 """
 function get_best_configuration(graph, V)
-    (becu, beco, beth) = get_best_rounding(graph, V)
+    (becu, beco, _) = get_best_rounding(graph, V)
     return (becu, beco)
 end
 
@@ -697,7 +700,7 @@ end
         bestcut - the best cut found
 """
 function get_best_cut(graph, V)
-    (becu, beco, beth) = get_best_rounding(graph, V)
+    (becu, _, _) = get_best_rounding(graph, V)
     return becu
 end
 
@@ -800,7 +803,7 @@ function get_random_rounding(graph, V, trials = 10)::Array{Int8}
 end
 
 function get_random_cut(graph, V, trials = 10)
-    (becu, beco, beth) = get_random_rounding(graph, V, trials)
+    (becu, _, _) = get_random_rounding(graph, V, trials)
     return becu
 end
 
@@ -830,16 +833,17 @@ OUTPUT:
     {-1, 1}^(len) - Int8-integer array of 1 and -1
 """
 function get_random_configuration(len::Integer, p=0.5)::Array{Int8}
+#function get_random_configuration(len::Integer)::Array{Int8}
     # A Bernoulli sequence of length len
     # Can be used for generating random binary distributions
     #    return [randspin(p) for i in 1:len]
-    out::Array{Int8} = [if rand() < p
-                            1
-                        else
-                            -1
-                        end
-                        for i in 1:len]
-    return out
+    out = Array{Int8}(undef, len)
+    return map(x ->
+        if rand() < p
+            1
+        else
+            -1
+        end, out)
 end
 
 function get_initial(Nvert::Integer, (vmin, vmax))
@@ -893,11 +897,7 @@ OUTPUT:
     a string at the H-distance sum(flip) from conf
 """
 function flipconf(conf::Array, flip::Array{Int})
-    # Q: isn't this conf[flip] .*= -1?
-
-    for ind in flip
-        conf[ind] *= -1
-    end
+    conf[flip] .*= -1
     return conf
 end
 
@@ -930,6 +930,7 @@ function majority_twoflip!(graph, conf::Array{Int8, 1}, cut_edge)
     end
 
     if tot > -2
+        # conf[[cut_edge.src, cut_edge.dst]] .*= -1
         conf[cut_edge.src] *= -1
         conf[cut_edge.dst] *= -1
         flip_flag = true
@@ -1238,8 +1239,7 @@ function trajectories(graph, duration, scale, method::Function, Ks,
     VFull = Vini
     V = Vini
 
-    tran = 1:(duration - 1)
-    for tau in tran
+    for _ = 1:(duration - 1)
         ΔV = scale .* step_rate(graph, method, V, Ks, Ns, noise)
         V += ΔV
         VFull = [VFull V]
@@ -1279,7 +1279,7 @@ function propagate(graph, duration, scale, method::Function, Ks,
 
     V = Vini
 
-    for tau in 1:(duration - 1)
+    for _ = 1:(duration - 1)
         ΔV = scale .* step_rate(graph, method, V, Ks, Ns, noise)
         V += ΔV
     end
@@ -1297,7 +1297,6 @@ function propagate(model::Model, duration, Vini)
     #
     # OUTPUT:
     #   [V[1] .. V[nv(graph)] at t = duration - 1
-
     return propagate(model.graph, duration, model.scale, model.coupling,
                      model.Ks, Vini, model.Ns, model.noise)
 end
@@ -1352,7 +1351,7 @@ function trajectories_extended(graph, duration, scale,
     RFull = [Rini]
     R = Rini
 
-    for tau in 1:(duration - 1)
+    for _ = 1:(duration - 1)
         (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks,
                                       one_method, R)
          V += scale .* ΔV
@@ -1407,7 +1406,7 @@ function propagate_extended(graph, duration, scale, pair_method, Vini,
     V = Vini
     R = Rini
 
-    for tau in 1:(duration - 1)
+    for _ = 1:(duration - 1)
         (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks,
                                       one_method, R)
         V += scale .* ΔV
@@ -1541,7 +1540,7 @@ function propagate_2(model::Model, tmax, Sstart::Array{Int8, 1},
     mtd = model.method
     Ns = model.Ns
     noise = model.noise
-    for tau in 1:(tmax - 1)
+    for _ = 1:(tmax - 1)
         DX = step_rate_2(graph, mtd, S, X, Ns, noise).*scale
         update_2!(S, X, DX)
     end
@@ -1564,7 +1563,7 @@ function trajectories_2(model::Model, tmax, Sstart::Array{Int8, 1},
     mtd = model.method
     Ns = model.Ns
     noise = model.noise
-    for tau in 1:(tmax - 1)
+    for _ = 1:(tmax - 1)
         DX = step_rate_2(graph, mtd, S, X, Ns, noise).*scale
         update_2!(S, X, DX)
         XFull = [XFull X]
@@ -1610,7 +1609,7 @@ function conf_decay(graph, conf::Array, listlen=3)
 
     NVert = nv(graph)
     if NVert !== length(conf)
-        throw(Error("The configuration legnth does not match the size of the graph"))
+        throw("The configuration legnth does not match the size of the graph")
     end
 
     L = laplacian_matrix(graph)
@@ -1633,23 +1632,27 @@ function conf_decay(graph, conf::Array, listlen=3)
     return out[1:listlen]
 end
 
-# function perturbation_spectrum(graph, conf::Array, listlen=3)
+# TODO(?) function perturbation_spectrum(graph, conf::Array, listlen=3)
+#   listlen - how many eigenvalues to be returned
+"""
+    conf_decay_states(graph, conf::Array{Int8, 1})
 
-function conf_decay_states(graph, conf::Array{Int8, 1}, listlen=3)
-    # Evaluates the eigenvalue and eigenvector of the most unstable
-    # excitation in configuration conf
-    #
-    # INPUT:
-    #   graph
-    #   conf - a string with configuration encoded in
-    #   listlen - how many eigenvalues to be returned
-    #
-    # OUTPUT:
-    # lambda, v - eigenvalue and eigenvector
+Evaluates the eigenvalue and eigenvector of the most unstable
+excitation in configuration conf
+
+INPUT:
+    `graph`
+    `conf` - a string with configuration encoded in
+
+OUTPUT:
+    lambda, v - eigenvalue and eigenvector
+
+"""
+function conf_decay_states(graph, conf::Array{Int8, 1})
 
     NVert = nv(graph)
     if NVert !== length(conf)
-        throw(Error("The configuration length does not match the size of the graph"))
+        throw("The configuration length does not match the size of the graph")
     end
 
     L = laplacian_matrix(graph)
@@ -1672,23 +1675,21 @@ function conf_decay_states(graph, conf::Array{Int8, 1}, listlen=3)
 end
 
 function scan_for_best_configuration(model::Model, Vc::Array,
-                                     domain::Float64, tmax::Integer, Ninitial::Integer)
-    # Scans a vicinity of Vc with size given by domain in the "Monte Carlo style"
-    #
-    # Ninitial number of random initial conditions with individual amplitudes
-    # varying between ±domain
+                                     domain::Float64, tmax::Integer,
+                                     Ninitial::Integer)
+# Scan a vicinity of Vc with size given by domain in the "Monte Carlo style"
+#
+# Ninitial number of random initial conditions with individual amplitudes
+# varying between ±domain
 
     G = model.graph
-    Nvert = nv(G)
-
     (bcut, bconf) = get_best_configuration(G, Vc)
-
-    for i in 1:Ninitial
-        local cucu::Integer
-
+    Nvert = nv(G)
+    for _ = 1:Ninitial
+#        local cucu::Integer
         Vi = domain .* get_initial(Nvert, (-1, 1))
         Vi .+= Vc;
-        Vi[rand((1:Nvert))] *= -1.1  # a random node is flipped as a perturbation
+        Vi[rand((1:Nvert))] *= -1.1  # flip a random node as a perturbation
         # Vi .-= sum(Vi)/Nvert
 
         # VF = propagateAdaptively(model, tmax, Vi);
@@ -1696,12 +1697,7 @@ function scan_for_best_configuration(model::Model, Vc::Array,
 
         (cucu, cuco) = get_best_configuration(G, roundup(VF))
 
-        if cut(G, cuco) != cucu
-            println("INTERNAL ERROR! Cuts are inconsistent!")
-        end
-
         if cucu > bcut
-            # println("Improvement by $(cucu - bcut)")
             bcut = cucu
             bconf = cuco
             Vc = bconf
@@ -1712,28 +1708,24 @@ function scan_for_best_configuration(model::Model, Vc::Array,
 end
 
 function test_branch(model, Vstart, domain, tmax, Ni, max_depth)
-    # Tests branch starting from Vstart
-    # INPUT:
-    #   model
-    #   Vstart
-    #   domain      - the size of the vicinity to take the initial states from
-    #   tmax        - for how long propagate the particular initial conditions
-    #   Ni          - the number of trials
-    #   max_depth   - the maximal depth
+# Tests branch starting from Vstart
+# INPUT:
+#   model
+#   Vstart
+#   domain      - the size of the vicinity to take the initial states from
+#   tmax        - for how long propagate the particular initial conditions
+#   Ni          - the number of trials
+#   max_depth   - the maximal depth
 
-    local bcut::Integer, bconf::Array{Integer}, stepcount::Integer, nextflag::Bool
-
-    Nvert = nv(model.graph)
-
-    nextflag = true
+#    local bcut::Integer, bconf::Array{Integer}, stepcount::Integer, nextflag::Bool
 
     (bcut, bconf) = get_best_configuration(model.graph, Vstart)
 
     Vcentral = Vstart
     stepcount = 0
+    nextflag = true
     while nextflag
-        local cucu::Integer
-
+#        local cucu::Integer
         stepcount += 1
 
         (cucut, cuconf) = scan_for_best_configuration(model, Vcentral, domain, tmax, Ni)

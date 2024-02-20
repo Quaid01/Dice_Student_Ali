@@ -7,3 +7,5 @@ This is a collection of functions for dynamical Ising solvers.
 =Dice.jl= - the development version of the module
 
 =hf.jl= - a temporary hack for scanning Hamming vicinities
+
+=methods.jl= - the library of dynamical models
