@@ -385,9 +385,9 @@ function integer_distribution(arr::Array{Int, 1})
     vals::Array{Int, 1} = []
     pval::Array{Float64, 1} = []
     arr = sort(arr)
-    NN = length(arr)
+    numPoints = length(arr)
     ind = 1
-    while ind <= NN
+    while ind <= numPoints
         val = arr[ind]
         elems = findall(y -> y == val, arr[ind:end])
         push!(vals, val)
@@ -395,7 +395,7 @@ function integer_distribution(arr::Array{Int, 1})
         # search in a slice returns indices relative to the slice        
         ind += elems[end]
     end
-    return (vals, pval./NN)
+    return (vals, pval./numPoints)
 end
 
 function av_dispersion(graph::SimpleGraph, V)
@@ -824,6 +824,7 @@ end
     get_random_configuration(len::Integer, p=0.5)
 
 Return a Bernoulli integer sequence of length `len` and parameter `p`.
+Can be used for generating random binary distributions (spin configurations).
 
 INPUT:
     len - the length of the sequence
@@ -833,7 +834,6 @@ OUTPUT:
     {-1, 1}^(len) - Int8-integer array of 1 and -1
 """
 function get_random_configuration(len::Integer, p=0.5)::Array{Int8}
-#function get_random_configuration(len::Integer)::Array{Int8}
     # A Bernoulli sequence of length len
     # Can be used for generating random binary distributions
     #    return [randspin(p) for i in 1:len]
@@ -864,6 +864,43 @@ function get_initial_2(Nvert::Integer, (vmin, vmax), p=0.5)
     return realign_2((get_random_configuration(Nvert, p),
                       get_initial(Nvert, (vmin, vmax))))
 end
+
+"""
+    get_random_sphere(Nvert::Integer, radius)
+
+Return vector with `Nvert` random points uniformly distributed over the
+sphere of given `radius`.
+
+INPUT:
+    Nvert::Integer
+    radius
+
+OUTPUT:
+    Array{Float64}[1:Nvert] - points on sphere
+"""
+function get_random_sphere(Nvert::Integer, radius)
+	X = randn(Nvert)
+    X ./= sqrt.(X' * X)
+    return X .* radius
+end
+
+"""
+    get_random_cube(Nvert::Integer, side)
+
+Return vector with `Nvert` random points uniformly distributed insde the
+cube with side length given by `side`.
+
+INPUT:
+    Nvert::Integer
+    side
+
+OUTPUT:
+    Array{Float64}[1:Nvert] - points inside the cube
+"""
+function get_random_cube(Nvert::Integer, side)
+    return side .* rand(Float64, Nvert)
+end
+
 
 function randnode(nvert)
     # Returns a random number in [1, nvert]
