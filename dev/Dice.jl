@@ -20,6 +20,7 @@
 #   3.1. Extend dynamical models
 #      a. Linear terms in Hamiltonian (field effect)
 #      b. State independent force (noise)
+#      c. Inhomogeneous dynamics (node dependent)
 #   4. Implement logging
 #   5. Fix the chain of types
 #   6. Admit differenttial equations for continuous time machines
@@ -66,17 +67,41 @@ export Model,
 # (reserved for future implementations)
 const silence_default = 3
 
-# The main type describing the Model
+
+
+# The main types describing the Model
+
+# To specify the general kind of model
+const graph_types = Set([:binary, :weighted])
+const isotropy_types = Set([:isotropic, :anisotropic, :dynamic])
+struct ModelKind
+    graph_type::Symbol 
+    anisotropy::Symbol
+
+    Noise::Bool
+
+    function ModelKind()
+        new(:binary, :isotropic, false)
+    end
+    
+    function ModelKind(graph_t::Symbol)
+        graph_t in graph_types || throw(ArgumentError("Invalid graph type: $graph_t"))
+        new(graph_t, :isotropic, false)
+    end
+end
+
 # For a compact description of simulation scenarios and controlling the
 # module behavior
 mutable struct Model
     graph::SimpleGraph
     # weights::Array
+    
     method::Function     # obsolete, phase out (now, it's coupling)
+    
     coupling::Function   # dynamical coupling function
     energy::Function     # energy kernel function
-    scale::Float64       # Defines the magnitude of the exchange terms
-                         # default = 1/Nvertices
+    scale::Float64       # Defines the magnitude of the timestep
+                         # default = 1/max_degree(graph)
 
     Ks::Float64          # The magnitude of the anisotropy term
                          # default = 0
@@ -90,7 +115,8 @@ mutable struct Model
     noise::Function      # noise function
                          # default = noiseUniform
 
-    extended::Bool       # Whether there is an extension (remove?)
+    extended::Bool       # obsolete, phase out (inside kind)
+                         # Whether there is an extension (dynamical anisotropy)
     silence::Integer     # the inverse level of verbosity
                          # default = silence_default
 
@@ -99,7 +125,6 @@ end
 
 # Several explicit (legacy?) constructors
 Model(graph, coupling) =
-    begin
         M = Model()
         M.graph = graph
         M.coupling = coupling
@@ -108,8 +133,8 @@ Model(graph, coupling) =
         # temporary placeholder
         M.energy = M.coupling
         # The default interpretation of anisotropy
-        M.anisotropy = (x) -> M.coupling(x, -x) 
-        M.scale = 1/nv(graph)
+        M.anisotropy = x -> M.coupling(x, -x) 
+        M.scale = 1/Graphs.Δ(graph)
         M.Ks = 0
         M.Ns = 0
         M.noise = Dice.noiseUniform
@@ -136,17 +161,18 @@ Model(graph, coupling, scale, Ks) =
         M.Ks = Ks
         M.Ns = 0
         M.noise = Dice.noiseUniform
+        M.extended = true        
         return M;
     end
         
 ############################################################
 #
 ### Internal service functions
+### TODO: replace by a proper logging functionality
 #
 ############################################################
 
 function message(model::Model, out, importance=1)
-    # must be replaced by a proper logging functionality
     if importance > model.silence
         println("$out ($importance)")
     end
@@ -599,7 +625,10 @@ end
     get_best_rounding(graph, V)
 
 Find the best rounding of configuration `V` on `graph`
-Return the cut, the configuration, and the threshold (t_c)
+Return the cut, the configuration, and the threshold (t_c).
+Noice that the threshold is not the same as the rounding 
+center (r_c). They are related by
+r_c = t_c + 2 mod [-2, 2]
 
 INPUT:
   graph
@@ -860,6 +889,19 @@ function get_initial_2(Nvert::Integer, (vmin, vmax), p=0.5)
     # Generate random configuration of length `Nvert` in the separated
     # representation with the continuous component uniformly distributed
     # in the (vmin, vmax) interval
+    #
+    # NOTE: OBSOLETE, replaced by get_initial_hybrid
+
+    return realign_2((get_random_configuration(Nvert, p),
+                      get_initial(Nvert, (vmin, vmax))))
+end
+
+function get_initial_hybrid(Nvert::Integer, (vmin, vmax), p=0.5)
+    # Generate random configuration of length `Nvert` in the separated
+    # representation with the continuous component uniformly distributed
+    # in the (vmin, vmax) interval
+    #
+    # NOTE: OBSOLETE, replaced by get_initial_hybrid
 
     return realign_2((get_random_configuration(Nvert, p),
                       get_initial(Nvert, (vmin, vmax))))
@@ -1341,143 +1383,7 @@ end
 ##
 ## Extended methods treating anisotropy dynamically
 ##
-
-function step_rate_extended(graph::SimpleGraph, coupling::Function,
-                            V::Array,
-                            Ks::Float64, anisotropy::Function, R::Float64)
-    # Evaluate ΔV and ΔR in the extended system
-    #
-    # INPUT:
-    #    graph - unweighted graph carrying V's 
-    #    method - method to evaluate different contributions
-    #   V(1:|graph|) - current distribution of dynamical variables
-    #    Ks - anisotropy constant
-    #
-    # OUTPUT:
-    #   ΔV(1:|graph|) - array of increments
-
-    #    out = Ks .* method(V, -V) # refactoring to scalars
-    out  = zeros(length(V))
-    r_out = 0
-    for node in vertices(graph)
-        Vnode = V[node]
-        an = Ks * anisotropy(Vnode - R)
-        out[node] = an
-        r_out += -an
-        for neib in neighbors(graph, node)
-            out[node] += coupling(Vnode, V[neib])
-        end
-    end
-    return (out, r_out)
-end
-
-function trajectories_extended(graph, duration, scale,
-                               pair_method::Function, Vini,
-                               Ks, one_method::Function, Rini)
-    # Advance the graph `duration - 1` steps forward
-    # This is the verbose version, which returns the full dynamics
-    #
-    #
-    # OUTPUT:
-    #   (VFull, RFull)
-    #           VFull = [V(0) V(1) ... V(duration-1)]
-    #           RFull - the final state of the added degree of freedom
-
-    VFull = Vini
-    V = Vini
-    RFull = [Rini]
-    R = Rini
-
-    for _ = 1:(duration - 1)
-        (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks,
-                                      one_method, R)
-         V += scale .* ΔV
-        R += scale * ΔR
-        VFull = [VFull V]
-        RFull = [RFull R]
-    end
-
-    return (VFull, RFull)
-end
-
-function trajectories_extended(model::Model, duration, Vini, Rini)
-    # Advances the graph `(duration - 1)` steps forward
-    # This is the verbose version, which returns the full dynamics
-    #
-    # model - the model description
-    # duration - how many time points to evaluate
-    # V0 - the initial conditions
-    #
-    # OUTPUT:
-    #   VFull = [V(0) V(1) ... V(duration-1)]
-
-    return trajectories_extended(model.graph, duration, model.scale,
-                                 model.coupling,
-                        Vini, model.Ks, model.anisotropy, Rini)
-end
-
-"""
-    propagate_extended(graph, duration, scale, pair_method, Vini,
-                              Ks, one_method, Rini)
-
-Propagate extended G + 1 model with the explicit specification.
-
-INPUT:
-      graph - the model description
-      duration - the number of time points
-      scale - the length of the single time step
-      pair_method - coupling
-      Vini - the initial configuration of G
-      Ks - the anisotropy costant
-      one_method - the anisotropy method
-      Rini - the initial state of the additional degree of freedom
-
-OUTPUT:
-      (Vfinal, Rfinal) -
-              Vfinal - the final configuration of G
-              Rfinal - the final state of the additional degree of freedom
-"""
-function propagate_extended(graph, duration, scale, pair_method, Vini,
-                            Ks, one_method, Rini)
-
-    V = Vini
-    R = Rini
-
-    for _ = 1:(duration - 1)
-        (ΔV, ΔR) = step_rate_extended(graph, pair_method, V, Ks,
-                                      one_method, R)
-        V += scale .* ΔV
-        R += scale * ΔR
-    end
-    return (V, R)
-end
-
-"""
-    propagate_extended(model::Model, duration, Vini, Rini)
-
-Propagate extended G + 1 model.
-
-INPUT:
-      model - the model description
-      duration - the number of time points
-      Vini - the initial configuration of G
-      Rini - the initial state of the additional degree of freedom
-
-OUTPUT:
-      (Vfinal, Rfinal) -
-              Vfinal - the final configuration of G
-              Rfinal - the final state of the additional degree of freedom
-"""
-function propagate_extended(model::Model, duration, Vini, Rini)
-    graph = model.graph
-    Ks = model.Ks
-    pair_method = model.coupling
-    one_method = model.anisotropy
-    scale = model.scale
-    
-    return propagate_extended(graph, duration, scale, pair_method, Vini,
-                              Ks, one_method, Rini)
-end
+include("dyn_anisotropy_model.jl")
 
 """
     energy (model, V)
