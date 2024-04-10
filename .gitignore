@@ -26,3 +26,6 @@ Manifest.toml
 # System's service files
 .projectile
 .directory
+
+# Temp files
+vars.jl

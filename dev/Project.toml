@@ -1,9 +1,0 @@
-name = "Dice"
-uuid = "b1032ea8-0e44-4f5e-a542-828f9d6795b4"
-authors = ["Misha Erementchouk <merement@gmail.com>"]
-version = "0.2.16"
-
-[deps]
-Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
-Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
-SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
