@@ -11,7 +11,7 @@
 
 * Content
 
-[[file:dev][dev]] contains the development version of the library
+[[file:dev][src]] contains the development version of the library
 
 [[file:cases/][cases]] holds particular "releases" (see the description inside) and applications
 
