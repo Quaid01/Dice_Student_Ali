@@ -1,0 +1,65 @@
+A collection of functions used for simulating dynamical Ising solvers
+
+Here, the dynamical variables are regarded from the perspective of the
+feasible configurations. Therefore, the Ising states are {-1, 1}^N,
+and the period of the main functions is [-2, 2).
+
+The main functions are F(v) and f = F'(v)
+
+F(v) is defined by
+
+C_G(v) = \sum_{(m,n) \in E} F(v_m - v_n), when v_m ∈ {-1, 1}
+
+So that F(0) = 0 (the same partition), F(±2) = -1. Hence, the period above.
+
+# Content
+
+The source files of ~Dice~
+
+=Dice.jl= - the main file
+
+=hf.jl= - a temporary hack for scanning Hamming vicinities
+
+=methods.jl= - the library of dynamical models
+
+=dyn_anisotropy_model.jl= - Methods for treating anisotropy (local landscape) dynamically
+
+# Notes
+
+A note on cut_2 kind of functions. One of the purposes of separating
+variables is to separate the cut function C = C_I + C_M. Hence,
+the only need for cut_2 is to evaluate C_M, which is model dependent.
+Hence, implementing special something like
+cut_2(model, (s,x), binaryonly = true) doesn't seem wise.
+
+
+# TODOs
+
+  1. [DONE] Fix rounding
+
+  2. [DONE] Make energy methods for correct energy evaluations
+
+  3. [DONE] Add the weight support
+
+  4. Relaxed cut functions with the passed method
+
+  5. Fix the chain of types
+
+  6. Clean up dynamical kernels: categorize, consistent naming
+
+  7. Enable LUT-defined methods
+
+  8. Extend dynamical models
+     a. Linear terms in Hamiltonian (field effect)
+     b. State independent force (noise)
+     c. Inhomogeneous dynamics (node dependent)
+
+  9. Implement logging
+
+  10. [KILL] Admit differential equations for continuous time machines
+
+  11. Redesign: implement consistently the notion of functions on the graph
+
+  12. Redesign: incorporate linear terms
+
+  13. Error handling
