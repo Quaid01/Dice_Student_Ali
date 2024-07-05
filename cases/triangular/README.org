@@ -6,7 +6,27 @@
 #+KEYWORDS:
 #+DESCRIPTION:
 
-Files for generating and processing data for the paper on the triangular model:
+Files for generating and processing data for the paper on the triangular
+model
+
+* Full bibliographical record
+
+Aditya Shukla, Mikhail Erementchouk, Pinaki Mazumder,
+
+Scalable almost-linear dynamical Ising machines, Natural Computing, 2024,
+https://doi.org/10.1007/s11047-024-09983-4
+
+(https://rdcu.be/dMTTg)
+
+* Main files
+
+1. ~scaling_tri.jl~ -- the simulation script
+
+2. ~ls-1-4R.dat~ -- 1-opt local-search data
+
+3. ~tri-4R.dat~ -- the triangular model data
+
+* Supplemental files
 
 1. ~DiceBasic.jl~ -- an abridged version of the Dice module
 2. ~generate_samples.jl~ -- the script for generating ER graphs
