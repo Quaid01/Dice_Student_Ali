@@ -1,18 +1,15 @@
-# A collection of functions used for simulating dynamical Ising solvers
+# A collection of functions for simulating dynamical Ising solvers
 #
 
 # NOTE:
-# This is the version with explicitly defined functions for supporting
-# the separated representation of Model II. The introduced functions are
-#     separate
-#     combine
+# This is the version that phases out explicitly defined functions supporting
+# the separated representation of Model II:
 #     update_2!
 #     step_rate_2
 #     propagate_2
 #     trajectories_2
 #     coupling_model_2
 #     cut_2
-#     integer_distribution
 
 module Dice
 
@@ -24,13 +21,18 @@ using Random
 using SimpleWeightedGraphs
 using SparseArrays
 
-export Hybrid, Model,
-    loadDumpedGraph, dumpGraph, 
-    get_connected, get_initial,
+export Hybrid, SpinConf, Model,
+    dumpGraph, loadMTXAdjacency, loadMTXGraph,
+    get_ER_graph,
+    get_regular_graph,
+    get_random_cube,
+    get_random_hybrid,
+    get_random_sphere,
+    get_initial,
     get_random_configuration,
     sine, triangular,
     cut, get_best_cut, get_best_configuration, extract_configuration,
-    H_Ising, energy,
+#    H_Ising, energy,
     number_to_conf, 
     propagate, roundup,
     test_branch, scan_for_best_configuration,
@@ -38,11 +40,11 @@ export Hybrid, Model,
     local_search, local_twosearch,
     local_search!, local_twosearch!
 
-# Define the default level of logging verbosity
 # (reserved for future implementations)
+"Define the default level of logging verbosity"
 const silence_default = 3
 
-# The smallest non-zero weight magnitude
+"The smallest non-zero weight magnitude"
 const weight_eps = 1e-5
 
 ########################################
@@ -52,7 +54,9 @@ const weight_eps = 1e-5
 ########################################
 
 # Data types for dynamical variables
-const Hybrid = Tuple{Array{Int8, 1}, Array{Float64, 1}}
+const FVector = Vector{Float64}
+const SpinConf = Vector{Int8}
+const Hybrid = Tuple{SpinConf, FVector}
 
 # To specify the general kind of model
 const ModelGraph = Union{SimpleGraph, SimpleWeightedGraph}
@@ -79,7 +83,8 @@ end
 # For a compact description of simulation scenarios and controlling the
 # module behavior
 mutable struct Model
-    const kind::ModelKind
+    # TODO: figure out the constness
+    kind::ModelKind
 
     graph::ModelGraph
     
@@ -214,17 +219,17 @@ end
 """
     hybrid_to_cont(hybrid::Hybrid, r = 0.0)::Array{Float64}
 
-Converts from the hybrid (σ, X) representation to the 
-continuous (ξ) representation.
+Convert the `hybrid` (σ, X) representation to the 
+continuous (ξ) representation with rounding center at `r`.
 
-INPUT:
-    hybrid::Hybrid = Tuple(s, x), where
-    s - the {-1, 1}-array containing the discrete component
-    x - the array with the continuous component
+# Arguments
+- `hybrid::Hybrid` = (s, x), where
+ `s` - the {-1, 1}-array containing the discrete component
+ `x` - the array with the continuous component
 
-    r - the rounding center (default = 0)
+- `r` - the rounding center (default = 0)
 
-OUTPUT:
+# Output
     Array{Float64}(length(x)) with ξ = σ + X + r
 """
 function hybrid_to_cont(hybrid::Hybrid, r = 0.0)::Array{Float64}
@@ -236,10 +241,10 @@ end
                     r = 0.0)::Hybrid
 
 Separate the discrete and continuous components of the given distribution
-according to V = sigma + X + r, where sigma ∈ {-1, +1}^N, X ∈ [-1, 1)^N,
-and -2 < r < 2 is the rounding center.
+according to V = sigma + X + r, where ``sigma ∈ {-1, +1}^N``, ``X ∈ [-1, 1)^N``,
+and ``-2 < r < 2`` is the rounding center.
 
-INPUT:
+# Arguments
     V - array to process
     r - the rounding center
 
@@ -273,7 +278,7 @@ Separate the discrete and continuous components of the given distribution
 according to V = sigma + X + r, where sigma ∈ {-1, +1}^N, X ∈ [-1, 1)^N,
 and -2 < r < 2 is the rounding center.
 
-INPUT:
+# Arguments
     V - array to process
     r - the rounding center
 
@@ -306,7 +311,7 @@ end
 
 Recover the dynamic variables from the separated representation.
 
-INPUT:
+# Arguments
     s - the {-1, 1} array containing the discrete component
     x - the array with the continuous component
     r - the rounding center (default = 0)
@@ -336,17 +341,17 @@ function HammingD(s1::Array, s2::Array)
 end
 
 """
-    EuclidD(V1::Array{Float64, 1}, V2::Array{Float64, 1})
+    EuclidD(V1::FVector, V2::FVector)
 
 Evaluate the Euclidean distance between two distributions
 
-INPUT:
+# Arguments
   `V1`, `V2` - two arrays on the graph vertices
 
 OUTPUT:
       Sum_v (V_1(v) - V_2(v))^2
 """
-function EuclidD(V1::Array{Float64, 1}, V2::Array{Float64, 1})
+function EuclidD(V1::FVector, V2::FVector)
     return sum((V1 .- V2).^2)
 end
 
@@ -366,53 +371,50 @@ include("statistical_methods.jl")
 ############################################################
 
 """
-    cut_binary(graph::SimpleGraph, conf::Array{Int8, 1})::Int
+    cut_binary(graph::SimpleGraph, conf::SpinConf)::Int
 
 Evaluate the cut value for the given {0, 1}-weighted graph and binary configuration
 
-INPUT:
+# Arguments
     graph - Graphs object
     conf - binary configuration array {-1,1}^N
 OUTPUT:
     Sum_e   (1 - e1. e.2)/2
 """
-function cut_binary(graph::SimpleGraph, conf::Array{Int8, 1})::Int
+function cut_binary(graph::SimpleGraph, conf::SpinConf)::Int
     if nv(graph) != length(conf)
         println("ERROR: The configuration size $(length(conf)) and the graph size $(nv(graph)) do not match")
     end # side note: turned out to be useful
 
     out::Int = 0
     for edge in edges(graph)
-#        chi::Int8 = 1 - conf[edge.src] * conf[edge.dst]
         if conf[edge.src] * conf[edge.dst] == -1
             out += 1
         end
-        # out += (1 - conf[edge.src] * conf[edge.dst]) / 2
     end
     return out
 end
 
 """
     cut_weighted(graph::SimpleWeightedGraph,
-                conf::Array{Int8, 1})::Float64
+                conf::SpinConf)::Float64
 
 Evaluate the cut value for the given weighted `graph` and binary configuration `conf`
 
-INPUT:
+# Arguments
     graph - Graphs object
     conf - binary configuration array {-1,1}^N
 OUTPUT:
     Sum_e   w(e)(1 - e.1 e.2)/2
 """
 function cut_weighted(graph::SimpleWeightedGraph,
-                    conf::Array{Int8, 1})::Float64
+                    conf::SpinConf)::Float64
     if nv(graph) != length(conf)
         println("ERROR: The configuration size $(length(conf)) and the graph size $(nv(graph)) do not match")
     end # side note: turned out to be useful
 
     out::Float64 = 0.0
     for edge in edges(graph)
-#        chi::Int8 = 1 - conf[edge.src] * conf[edge.dst]
         if conf[edge.src] * conf[edge.dst] == -1
             out += weight(edge)
         end
@@ -421,24 +423,28 @@ function cut_weighted(graph::SimpleWeightedGraph,
 end
 
 """
-    cut(graph::ModelGraph,
-        conf::Array{Int8, 1})::Union{Float64, Int32}
+    cut(graph::ModelGraph, conf::SpinConf)
 
 Main dispatch for evaluating cut. Depending on whether `graph`
 is binary or weighted, the respective cut function is called.
 
-INPUT:
+# Arguments
     graph - Graphs object (`ModelGraph`)
     conf - binary configuration array {-1,1}^N
-OUTPUT:
-    Sum_e   w(e)(1 - e.1 e.2)/2
+
+# Output
+    ∑_e w(e)(1 - e.1 e.2)/2
 """
-function cut(graph::ModelGraph, conf::Array{Int8, 1})
+function cut(graph::ModelGraph, conf::SpinConf)
 	if graph isa SimpleWeightedGraph
         return cut_weighted(graph, conf)
 	else
         return cut_binary(graph, conf)
 	end
+end
+
+function cut(graph::ModelGraph, state::Hybrid)
+    return cut(graph, state[1])
 end
 
 function get_random_cut(graph, V, trials = 10)
@@ -458,7 +464,7 @@ end
 
 # Some Model II specific functions
 
-function cut_2(model, s::Array{Int8, 1}, x::Array{Float64, 1})
+function cut_2(model, s::SpinConf, x::FVector)
     # This should be some kind of energy function for Model II
     # Evaluages the cut function for Model II:
     # C_2(sigma, X) = C(sigma) + \Delta C_2(sigma, X)
@@ -504,7 +510,7 @@ end
 Return a Bernoulli integer sequence of length `len` and parameter `p`.
 Can be used for generating random binary distributions (spin configurations).
 
-INPUT:
+# Arguments
     len - the length of the sequence
     p - the parameter of the Bernoulli distribution (probability to have 1)
 
@@ -562,7 +568,7 @@ end
 Return vector with `Nvert` random points uniformly distributed over the
 sphere of given `radius`.
 
-INPUT:
+# Arguments
     Nvert::Int
     radius
 
@@ -581,7 +587,7 @@ end
 Return vector with `Nvert` random points uniformly distributed insde the
 cube with side length given by `side`.
 
-INPUT:
+# Arguments
     Nvert::Int
     side
 
@@ -614,7 +620,7 @@ include("hf.jl")
 
 Change configuration `conf` according to flips in the index array `flip`
     
-INPUT:
+# Arguments
     conf - {-1, 1}^N array containing the original string
     flip - array with indices where conf should be modified
 
@@ -626,7 +632,7 @@ function flipconf(conf::Array, flip::Array{Int})
     return conf
 end
 
-function majority_flip!(graph, conf::Array{Int8, 1}, node)
+function majority_flip!(graph, conf::SpinConf, node)
     # Flips conf[node] to be of the opposite sign to the majority of its neighbors
 
     flip_flag = false
@@ -641,7 +647,7 @@ function majority_flip!(graph, conf::Array{Int8, 1}, node)
     return flip_flag
 end
 
-function majority_twoflip!(graph, conf::Array{Int8, 1}, cut_edge)
+function majority_twoflip!(graph, conf::SpinConf, cut_edge)
     # Flips a cut pair if the edges adjacent to the cut edge
     # form the wrong majority
     # Preserves the node-majority
@@ -655,15 +661,13 @@ function majority_twoflip!(graph, conf::Array{Int8, 1}, cut_edge)
     end
 
     if tot > -2
-        # conf[[cut_edge.src, cut_edge.dst]] .*= -1
-        conf[cut_edge.src] *= -1
-        conf[cut_edge.dst] *= -1
+        conf[[cut_edge.src, cut_edge.dst]] .*= -1
         flip_flag = true
     end
     return flip_flag
 end
 
-function local_search(graph, conf::Array{Int8, 1})
+function local_search(graph, conf::SpinConf)
     # Eliminates vertices breaking the majority rule
     # Attention, it changes conf
     # While it's ideologically off, it is useful for functional
@@ -689,7 +693,7 @@ number of adjacent uncut edges exceeds the number of cut edges. If it does,
 the node is flipped. It produces a configuration, which does not have
 configurations yielding better cut within the Hamming distance one.
 
-INPUT:
+# Arguments
     graph - the graph object
     conf - {-1, 1}^N - the initial configuration
 
@@ -697,7 +701,7 @@ OUTPUT:
     count - the total number of passes
     `conf` is displaced to a locally optimal configuration
 """
-function local_search!(graph, conf::Array{Int8, 1})
+function local_search!(graph, conf::SpinConf)
     nonstop = true
     count = 0
     while nonstop
@@ -710,7 +714,7 @@ function local_search!(graph, conf::Array{Int8, 1})
     return count
 end
 
-function local_twosearch(graph, conf::Array{Int8, 1})
+function local_twosearch(graph, conf::SpinConf)
     # Eliminates pairs breaking the edge-majority rule
     # Attention, it changes conf
     nonstop = true
@@ -729,18 +733,15 @@ end
     local_twosearch!(graph, conf)
 
 Eliminate in-place pairs in configuration `conf' breaking the edge majority
-rule on `graph'. Return the number of passes.
+rule on `graph' and return the number of passes.
 
 The configuration is presumed to satisfy the node majority rule.
 
-INPUT:
-    graph - the graph object
-    conf - {0,1}^N array
-
-OUTPUT:
-    How many times the set of vertices was traversed.
+# Arguments
+- `graph` - the graph object
+- `conf` - {-1, 1}^N array with the initial spin configuration
 """
-function local_twosearch!(graph, conf::Array{Int8, 1})
+function local_twosearch!(graph, conf::SpinConf)
     nonstop = true
     count = 0
     while nonstop
@@ -756,21 +757,21 @@ function local_twosearch!(graph, conf::Array{Int8, 1})
 end
 
 """
-    number_to_conf(number, length)
+    number_to_conf(number ::Int, len ::Int)::Array{Int8}
 
-Return and Int8-array of the `number`-th {-1, 1}-configuration of a model
-with `length` spins
+Return an Int8-array of the `number`-th {-1, 1}-configuration of a model
+with `len` spins.
 
 This is `number` in the binary representation
 padded with leading zeros to length
 """
-function number_to_conf(number, length)::Array{Int8}
-    preconf::Array{Int8} = digits(number, base=2, pad=length) |> reverse
+function number_to_conf(number ::Int, len ::Int)::Array{Int8}
+    preconf::Array{Int8} = digits(number, base=2, pad=len) |> reverse
     return 2 .* preconf .- 1
 end
 
-function conf_to_number(conf)
-    # Converts conf as a binary number to its decimal representation
+function conf_to_number(conf::SpinConf)
+    # Convert conf as a binary number to its decimal representation
 
     # TODO: This function is rarely needed, hence the dumb code.
     #        I'm not even sure it works correctly
@@ -778,7 +779,7 @@ function conf_to_number(conf)
     binconf = (conf .+ 1) ./ 2
 
     out = 0
-    for i = 1:length(binconf)
+    for i in 1:length(binconf)
         out += binconf[i] * 2^(i - 1)
     end
 
@@ -821,23 +822,19 @@ function get_ER_graph(Nvert::Int, prob::Float64)::SimpleGraph
     # The output graph is a connected subgraph of K_{Nvert} with
     # only edges where F = 1 kept in the set of edges.
 
-#    G = Graph()
     while true
         G = erdos_renyi(Nvert, prob)
         is_connected(G) && return G
     end
-#    return G
 end
 
 function get_regular_graph(Nvert, degree)::SimpleGraph
     # Generate a random connected `degree'-regular graph with `Nvert` vertices
 
-#    G = Graph()
     while true
         G = random_regular_graph(Nvert, degree)
         is_connected(G) && return G
     end
-#    return G
 end
 
 ##########################################################
@@ -847,7 +844,7 @@ end
 ##########################################################
 
 function step_rate(graph::SimpleGraph, method::Function,
-                   V::Array{Float64, 1})::Array{Float64, 1}
+                   V::FVector)::FVector
 # Evaluate ΔV (continuous representation) in a single step
 # Deals with {0,1}-weighted graphs, isotropic, noiseless
     out  = zeros(Float64, size(V))
@@ -861,7 +858,7 @@ function step_rate(graph::SimpleGraph, method::Function,
 end
 
 function step_rate(graph::SimpleWeightedGraph, method::Function,
-                   V::Array{Float64, 1})::Array{Float64, 1}
+                   V::FVector)::FVector
 # Evaluate ΔV (continuous representation) in a single step
 # Deals with weighted graphs, isotropic, noiseless
     out  = zeros(Float64, size(V))
@@ -874,29 +871,30 @@ function step_rate(graph::SimpleWeightedGraph, method::Function,
     return out
 end
 
-function update_hybrid!(spins::Array{Int8, 1},
-                   xs::Array{Float64, 1},
-                   dx::Array{Float64, 1})
-    # Update the continuous component (xs) by dx using the wrapping rule
-    # The spin part is assumed to be Int8-array
-    # Presume that |dx[i]| < 2
+"""
+    update_hybrid!(spins::SpinConf, xs::FVector, dx::FVector)
+
+Update the continuous component `xs` by `dx` using the wrapping rule with
+the spin component in `spins`. Assume that |`dx[i]`| < 2.
+"""
+function update_hybrid!(spins::SpinConf, xs::FVector, dx::FVector)
     Nvert = length(spins)
+    Xnew = xs + dx
     for i in 1:Nvert
-        Xnew = xs[i] + dx[i]
-        if Xnew > 1
-            xs[i] = Xnew - 2
+        if Xnew[i] > 1
+            xs[i] = Xnew[i] - 2
             spins[i] *= -1
-        elseif Xnew < -1
-            xs[i] = Xnew + 2
+        elseif Xnew[i] < -1
+            xs[i] = Xnew[i] + 2
             spins[i] *= -1
         else
-            xs[i] = Xnew
+            xs[i] = Xnew[i]
         end
     end
 end
 
 function step_rate_hybrid(graph::SimpleGraph, coupling::Function,
-                     s::Array{Int8, 1}, x::Array{Float64, 1})::Array{Float64, 1}
+                     s::SpinConf, x::FVector)::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
@@ -909,7 +907,7 @@ function step_rate_hybrid(graph::SimpleGraph, coupling::Function,
 end
 
 function step_rate_hybrid(graph::SimpleWeightedGraph, coupling::Function,
-                     s::Array{Int8, 1}, x::Array{Float64, 1})::Array{Float64, 1}
+                     s::SpinConf, x::FVector)::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
@@ -988,7 +986,7 @@ end
 
 
 function propagate(graph::ModelGraph, tmax::Int, scale::Float64,
-                   method::Function, Vini::Array{Float64, 1})::Array{Float64, 1}
+                   method::Function, Vini::FVector)::FVector
     # Advances the graph duration - 1 steps forward
     # This is the short version, which returns only the final state vector
     #
@@ -1053,8 +1051,8 @@ include("dyn_anisotropy_model.jl")
 
 
 ##
-## Functions for separated representation
-## (mostly legacies to phase out)
+## Functions for the separated representation
+## (mostly deprecated legacies)
 ##
 
 function realign_hybrid(conf::Hybrid, r = 0.0)::Hybrid
@@ -1078,9 +1076,7 @@ function realign_2(conf::Hybrid, r = 0.0)
     return Dice.cont_to_hybrid(V, r)
 end
 
-function update_2!(spins::Array{Int8, 1},
-                   xs::Array{Float64, 1},
-                   dx::Array{Float64, 1})
+function update_2!(spins::SpinConf, xs::FVector, dx::FVector)
     # Tracing version
     # Update the continuous component (xs) by dx using the wrapping rule
     # The spin part is assumed to be Int8-array
@@ -1105,8 +1101,7 @@ function update_2!(spins::Array{Int8, 1},
     return count
 end
 
-function propagate_2(model::Model, tmax, Sstart::Array{Int8, 1},
-                     Xstart::Array{Float64, 1})
+function propagate_2(model::Model, tmax, Sstart::SpinConf, Xstart::FVector)
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     #
@@ -1126,8 +1121,8 @@ function propagate_2(model::Model, tmax, Sstart::Array{Int8, 1},
     return (S, X)
 end
 
-function trajectories_2(model::Model, tmax, Sstart::Array{Int8, 1},
-                        Xstart::Array{Float64, 1})
+function trajectories_2(model::Model, tmax, Sstart::SpinConf,
+                        Xstart::FVector)
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     # Keeps the full history of progression
@@ -1137,7 +1132,7 @@ function trajectories_2(model::Model, tmax, Sstart::Array{Int8, 1},
     S = Sstart
 
     XFull = Xstart
-    SFull = convert(Array{Int8}, Sstart)
+    SFull = Sstart
     
     graph = model.graph
     scale = model.scale

@@ -1,31 +1,76 @@
 # Script file_operations.jl
 #
 # File operations
-"""
-    loadDumpedGraph(filename::AbstractString)::SimpleGraph
 
-Read graph in the simplified Matrixmarket format.
+# TODO: make a common interface
+function loadMTXAdjacency(filename::AbstractString)::Matrix
+    open(filename, "r") do mtxFile
+        header = true
+        linecount = 0
+        shape = [0, 0]
+        while !eof(mtxFile)
+#            for line in eachline(mtxFile) .|> strip .|> lowercase
+            line = readline(mtxFile) .|> strip .|> lowercase
+            linecount += 1;
+            if isempty(line) || line[1] == '%'
+                continue
+            end
+            tokens = split(line)
+            # the first content holding line is the shape descriptor
+            if length(tokens) < 2 || length(tokens) > 3
+                error("In $filename:$linecount, the descriptor $line is invalid")
+            end
+            shape .+= parse.(Int64, tokens[[1,end]])
+            header = false
+            break
+        end
+        if header
+            error("In $filename, no header was found")
+        end
 
-INPUT:
-    filename::String name of the file
+        sources = zeros(Int32, shape[2])
+        dests = zeros(Int32, shape[2])
+        weights = zeros(Float64, shape[2])
+        idx = 1
+        
+        while !eof(mtxFile)
+#            for line in eachline(mtxFile) .|> strip .|> lowercase
+            line = readline(mtxFile) .|> strip .|> lowercase
+            linecount += 1;
+            if isempty(line) || line[1] == '%'
+                continue
+            end
+            tokens = split(line)
+            
+            if length(tokens) < 2 || length(tokens) > 3
+                error("In $filename:$linecount, content line $line is invalid")
+            end
+            u, v = parse.(Int64, tokens[1:2])
+            w = length(tokens) == 3 ? parse(Float64, tokens[3]) : 1.0
+            # we skip edges with too small weight
+            abs(w) < weight_eps && continue
 
-OUTPUT:
-    SimpleGraph object
-
-The simplified format:
-    Header: lines starting with % (such lines are ignored)
-    Descriptor:
-             The valid Matrix Market descriptors are
-             R C E - number of rows, columns, non-zero entries
-             N E - number of nodes, edges
-        |V| |E|
-    Content
-        u v w_{u,v}
-
-NOTE: legacy alias for loadMTXGraph
-"""
-function loadDumpedGraph(filename::AbstractString)::ModelGraph
-    return loadMTXGraph(filename)
+            sources[idx] = u
+            dests[idx] = v
+            weights[idx] = w
+            idx += 1
+        end
+        if maximum(weights) - minimum(weights) > weight_eps
+            # we have a weighted graph
+            adj_m = zeros(Float64, shape[1], shape[1])
+            for (u, v, w) in zip(sources, dests, weights)
+                adj_m[u, v] = w
+                adj_m[v, u] = w
+            end
+            return adj_m
+        end
+        adj_m = zeros(Int64, shape[1], shape[1])
+        for (u, v) in zip(sources, dests)
+            adj_m[u, v] = 1
+            adj_m[v, u] = 1
+        end
+        return adj_m
+    end    
 end
 
 """
@@ -111,6 +156,33 @@ function loadMTXGraph(filename::AbstractString)::ModelGraph
         end
         return G
     end
+end
+
+"""
+    loadDumpedGraph(filename::AbstractString)::SimpleGraph
+
+Read graph in the simplified Matrixmarket format.
+
+INPUT:
+    filename::String name of the file
+
+OUTPUT:
+    SimpleGraph object
+
+The simplified format:
+    Header: lines starting with % (such lines are ignored)
+    Descriptor:
+             The valid Matrix Market descriptors are
+             R C E - number of rows, columns, non-zero entries
+             N E - number of nodes, edges
+        |V| |E|
+    Content
+        u v w_{u,v}
+
+NOTE: legacy alias for loadMTXGraph
+"""
+function loadDumpedGraph(filename::AbstractString)::ModelGraph
+    return loadMTXGraph(filename)
 end
 
 """
