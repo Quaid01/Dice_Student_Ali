@@ -1,0 +1,36 @@
+#+TITLE: Tools
+#+AUTHOR: Misha Erementchouk
+#+EMAIL: merement@gmail.com
+#+DATE: 
+#+OPTIONS: tex: t LaTeX: t toc:nil ^:{}
+#+KEYWORDS:
+#+DESCRIPTION:
+
+A collection of tools to work with the benchmarking data.
+
+* =generate-samples.jl=
+
+Creates a sample for studying the scaling properties of Ising solvers and
+saves them in the target directory in the u-v-w (reduced MatrixMarket)
+format
+
+Here, regular graphs are generated
+
+Usage:
+
+    julia generate_samples.jl config.ini
+
+~config.ini~ is the configuration file.
+
+The output is written to directories named according to
+(Output.Directory)-$Nodes
+(absent directories are created) in the form of a sequence
+of files ~Output.prefix-1~, ~Output.prefix-2~, ...
+The configuration file is copied to the target directory afterwards.
+Also file ~sample.list~ containing the list of all generated file
+(one name per line) in the format "Output.Directory/Output.prefix-i"
+is created in the target directory.
+
+The parameters are taken from a configuration file. An example
+configuration can be found in ~samples-sample.ini~
+

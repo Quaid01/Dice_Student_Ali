@@ -27,5 +27,7 @@ Manifest.toml
 .projectile
 .directory
 
-# Temp files
+# Temp files and directories
+__studies
+__studies/*
 vars.jl

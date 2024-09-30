@@ -1,5 +1,5 @@
-# methods.jl
-# Collection of coupling and energy functions
+# dynamical_kernels.jl
+# Collection of dynamical kernels (coupling and energy functions)
 
 function none_method(v)
     return 0 * v  # for the type stability thing
@@ -12,10 +12,143 @@ end
 const Pi2 = pi / 2
 const Pi4 = pi / 4
 
+################################################
+###
+### Kernels for the hybrid (σ, X) representation
+###
+################################################
+
+function rank_2_SDP_dynamic_2(v::Float64)::Float64
+    # the coupling function of rank-2 SDP in the hybrid representation
+    # 
+    return PI2 * sin(PI2*v)
+end
+
+function rank_2_SDP_static_2(v::Float64)::Float64
+    # the coupling function of rank-2 SDP in the hybrid representation
+    # 
+    return sin(PI4*v)^2
+end
+for i in 1:3
+    println(i)
+end
+
+#############################################
+###
+###     Triangular model
+###
+#############################################
+
+"""
+    triangular_hybrid_coupling(x1::Float64[, x2::Float64])::Float64
+
+Evaluate the coupling function for the triangular model assuming the hybrid
+representation. The coupling funct ion is an odd piece-wise linear function
+defined within the period [-2, 2] by
+    phi(-2) = phi(0) = phi(2) = 0
+    phi(-1) = phi(1) = 1
+
+The hybrid representation implies that the argument is within the period.
+No out-of-bounds checks are performed.
+"""
+function triangular_hybrid_coupling(x1::Float64)::Float64
+
+    p = Int(floor(x1/2 + 1/2))
+    parity = rem(abs(p), 2)
+    return (x1 - p * 2) * (-2 * parity + 1)
+end
+
+function triangular_hybrid_coupling(x1::Float64, x2::Float64)::Float64
+    return triangular_hybrid_coupling(x1 - x2)
+end
+
+### function triangular_hybrid_cut(x1::Float64)::Float64
+### end
+
+
+#############################################
+###
+###     Model 2 methods
+###
+#############################################
+
+function model_2_hybrid_coupling(x1::Float64)::Float64
+    return sign(x1)
+end
+
+function model_2_hybrid_coupling(x1::Float64, x2::Float64)::Float64
+    return model_2_hybrid_coupling(x1 - x2)
+end
+
+function model_2_hybrid_cut(x1::Float64)::Float64
+    return abs(x1)/2
+end
+
+function model_2_hybrid_cut(x1::Float64, x2::Float64)::Float64
+    return model_2_hybrid_cut(x1 - x2)
+end
+
+## Obsolete definitions
+
+function continuous_model_2(v)
+    vreduced = mod(v + 2, 4) - 2
+    return sign(vreduced)/2
+end
+
+function continuous_model_2(v1, v2)
+    return continuous_model_2(v1 - v2)
+end
+
+# The cut counting function for model II
+# For v in [-2, 2], Phi(v) = |v|/2
+function continuous_model_2_energy(v)
+    vreduced = mod(v + 2, 4) - 2
+    return abs(vreduced)/2
+end
+
+function continuous_model_2_energy(v1::Float64, v2::Float64)::Float64
+    return continuous_model_2_energy(v1 - v2)
+end
+
+function coupling_model_2(x1::Float64, x2::Float64)::Float64
+    dd = x1 - x2
+    return sign(dd)
+end
+
+function coupling_model_2(x1::Float64, x2::Float64, gamma::Float64)::Float64
+    dd = x1 - x2
+    return sign(dd) + gamma*dd
+end
+
+#############################################
+###
+###     Noise generators
+###
+#############################################
+
+function noiseUniform(L::Int)::Array{Float64, 1}
+    # uniform distribution in interval [-1, 1]
+    # returns vector of length L
+    return rand(Uniform(-1, 1), L)
+end
+
+function noiseNormal(L::Int)::Array{Float64, 1}
+    # normal distribution with zero mean and unit variance
+    # returns vector of length L
+    return rand(Normal(0, 1), L)
+end
+
+
+#############################################
+###
+###  Kernels for the straight representation
+###
+#############################################
+
 """
     cosine(v)
 
-The coupling energy inducing the XY-model (rank-2 relaxation).
+The coupling energy inducing the XY-model (rank-2 SDP relaxation).
 """
 function cosine(v)
     return cos.(Pi2 .* v)
@@ -188,117 +321,4 @@ function continuous_model_1_cont(v1, v2, s = 0.1)
     # v1 is presumed to be scalar
     # noticeably slower
     return -dtri_cont(v1, s).*triangular(v2)
-end
-
-#
-# Models for the separated representation
-#
-
-function rank_2_SDP_dynamic_2(v)
-    # the coupling function of rank-2 SDP in the separated representation
-    # 
-    return PI2 * sin(PI2*v)
-end
-
-function rank_2_SDP_static_2(v)
-    # the coupling function of rank-2 SDP in the separated representation
-    # 
-    return sin(PI4*v)^2
-end
-
-#############################################
-###
-###     Triangular model
-###
-#############################################
-
-function triangular_hybrid_coupling(x1::Float64)::Float64
-    # Odd piece-wise linear defined within the period [-2, 2] by
-    # phi(-2) = phi(0) = phi(2) = 0
-    # - phi(-1) = phi(1) = 1
-    # Scalar definition
-
-    p = Int(floor(x1/2 + 1/2))
-    parity = rem(abs(p), 2)
-    return (x1 - p * 2) * (-2 * parity + 1)
-end
-
-function triangular_hybrid_coupling(x1::Float64, x2::Float64)::Float64
-    return triangular_hybrid_coupling(x1 - x2)
-end
-
-### function triangular_hybrid_cut(x1::Float64)::Float64
-### end
-
-
-#############################################
-###
-###     Model 2 methods
-###
-#############################################
-
-function model_2_hybrid_coupling(x1::Float64)::Float64
-    return sign(x1)
-end
-
-function model_2_hybrid_coupling(x1::Float64, x2::Float64)::Float64
-    return model_2_hybrid_coupling(x1 - x2)
-end
-
-function model_2_hybrid_cut(x1::Float64)::Float64
-    return abs(x1)/2
-end
-
-function model_2_hybrid_cut(x1::Float64, x2::Float64)::Float64
-    return model_2_hybrid_cut(x1 - x2)
-end
-
-## Obsolete definitions
-
-function continuous_model_2(v)
-    vreduced = mod(v + 2, 4) - 2
-    return sign(vreduced)/2
-end
-
-function continuous_model_2(v1, v2)
-    return continuous_model_2(v1 - v2)
-end
-
-# The cut counting function for model II
-# For v in [-2, 2], Phi(v) = |v|/2
-function continuous_model_2_energy(v)
-    vreduced = mod(v + 2, 4) - 2
-    return abs(vreduced)/2
-end
-
-function continuous_model_2_energy(v1::Float64, v2::Float64)::Float64
-    return continuous_model_2_energy(v1 - v2)
-end
-
-function coupling_model_2(x1::Float64, x2::Float64)::Float64
-    dd = x1 - x2
-    return sign(dd)
-end
-
-function coupling_model_2(x1::Float64, x2::Float64, gamma::Float64)::Float64
-    dd = x1 - x2
-    return sign(dd) + gamma*dd
-end
-
-#############################################
-###
-###     Noise generators
-###
-#############################################
-
-function noiseUniform(L::Int)::Array{Float64, 1}
-    # uniform distribution in interval [-1, 1]
-    # returns vector of length L
-    return rand(Uniform(-1, 1), L)
-end
-
-function noiseNormal(L::Int)::Array{Float64, 1}
-    # normal distribution with zero mean and unit variance
-    # returns vector of length L
-    return rand(Normal(0, 1), L)
 end

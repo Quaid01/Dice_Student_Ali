@@ -22,7 +22,7 @@ using SimpleWeightedGraphs
 using SparseArrays
 
 export Hybrid, SpinConf, Model,
-    dumpGraph, loadMTXAdjacency, loadMTXGraph,
+    saveMTXGraph, loadMTXAdjacency, loadMTXGraph,
     get_ER_graph,
     get_regular_graph,
     get_random_cube,
@@ -32,8 +32,8 @@ export Hybrid, SpinConf, Model,
     get_random_configuration,
     sine, triangular,
     cut, get_best_cut, get_best_configuration, extract_configuration,
-#    H_Ising, energy,
-    number_to_conf, 
+    #    H_Ising, energy,
+    number_to_conf,
     propagate, roundup,
     test_branch, scan_for_best_configuration,
     conf_decay,
@@ -56,16 +56,16 @@ const weight_eps = 1e-5
 # Data types for dynamical variables
 const FVector = Vector{Float64}
 const SpinConf = Vector{Int8}
-const Hybrid = Tuple{SpinConf, FVector}
+const Hybrid = Tuple{SpinConf,FVector}
 
 # To specify the general kind of model
-const ModelGraph = Union{SimpleGraph, SimpleWeightedGraph}
+const ModelGraph = Union{SimpleGraph,SimpleWeightedGraph}
 
 const graph_types = Set([:binary, :weighted])
 const isotropy_types = Set([:isotropic, :anisotropic, :dynamic])
-const noise_types = Set([:noiseless, :thermal])
+const noise_types = Set([:noiseless, :thermal, :dynamic])
 struct ModelKind
-    graph_type::Symbol 
+    graph_type::Symbol
     anisotropy::Symbol
 
     Noise::Symbol
@@ -73,7 +73,7 @@ struct ModelKind
     function ModelKind()
         new(:binary, :isotropic, :noiseless)
     end
-    
+
     function ModelKind(graph_t::Symbol)
         graph_t in graph_types || throw(ArgumentError("Invalid graph type: $graph_t"))
         new(graph_t, :isotropic, :noiseless)
@@ -87,26 +87,26 @@ mutable struct Model
     kind::ModelKind
 
     graph::ModelGraph
-    
+
     coupling::Function   # dynamical coupling function
     scale::Float64       # Defines the magnitude of the timestep
-                         # default = 1/max_degree(graph)
+    # default = 1/max_degree(graph)
 
     Ks::Float64          # The magnitude of the anisotropy term
-                         # default = 0
+    # default = 0
     anisotropy::Function # anisotropy function
-                         # default = coupling(x, -x)
+    # default = coupling(x, -x)
 
     Ns::Float64          # The magnitude of the noise term
-                         # default = 0
+    # default = 0
     noise::Function      # noise function
-                         # default = noiseUniform
+    # default = noiseUniform
 
     extended::Bool       # obsolete, phase out (inside kind)
-                         # Whether there is an extension (dynamical
-                         # anisotropy)
+    # Whether there is an extension (dynamical
+    # anisotropy)
     silence::Int         # the inverse level of verbosity
-                         # default = silence_default
+    # default = silence_default
 
     Model() = new(ModelKind())
     Model(x::ModelKind) = new(x)
@@ -115,56 +115,56 @@ end
 # Explicit constructors
 Model(graph::ModelGraph, coupling::Function) =
     begin
-        M = 
-        begin
-            if graph isa SimpleWeightedGraph 
-                Model(ModelKind(:weighted))
-            else
-                Model(ModelKind(:binary))
+        M =
+            begin
+                if graph isa SimpleWeightedGraph
+                    Model(ModelKind(:weighted))
+                else
+                    Model(ModelKind(:binary))
+                end
             end
-        end
 
         M = Model()
         M.graph = graph
-        M.scale = 1/Graphs.Δ(graph)
+        M.scale = 1 / Graphs.Δ(graph)
         M.coupling = coupling
-#        M.method = M.coupling
+        #        M.method = M.coupling
         # temporary placeholder
-#        M.energy = M.coupling
+        #        M.energy = M.coupling
         # The default interpretation of anisotropy
-#=         M.anisotropy = x -> M.coupling(x, -x) 
-        M.Ks = 0
-        M.extended = false
-        M.Ns = 0
-        M.noise = Dice.noiseUniform =#
+        #=         M.anisotropy = x -> M.coupling(x, -x)
+                M.Ks = 0
+                M.extended = false
+                M.Ns = 0
+                M.noise = Dice.noiseUniform =#
         M.silence = silence_default
-        return M;
+        return M
     end
 
 Model(graph::ModelGraph, coupling::Function, scale::Float64) =
     begin
         M = Model(graph, coupling)
         M.scale = scale
-#=         M.Ks = 0
-        M.Ns = 0
-        M.noise = Dice.noiseUniform
-        M.silence = silence_default
-        M.extended = false
- =#        
-        return M;
+        #=         M.Ks = 0
+                M.Ns = 0
+                M.noise = Dice.noiseUniform
+                M.silence = silence_default
+                M.extended = false
+         =#
+        return M
     end
 
 Model(graph::ModelGraph, coupling::Function, scale::Float64, Ks::Float64) =
     begin
         M = Model(graph, coupling, scale)
         @warn "Anisotropy has no effect in the present version of Dice"
-#=         M.Ks = Ks
-        M.Ns = 0
-        M.noise = Dice.noiseUniform
-        M.extended = true         =#
-        return M;
+        #=         M.Ks = Ks
+                M.Ns = 0
+                M.noise = Dice.noiseUniform
+                M.extended = true         =#
+        return M
     end
-        
+
 ############################################################
 #
 ### Internal service functions
@@ -219,7 +219,7 @@ end
 """
     hybrid_to_cont(hybrid::Hybrid, r = 0.0)::Array{Float64}
 
-Convert the `hybrid` (σ, X) representation to the 
+Convert the `hybrid` (σ, X) representation to the
 continuous (ξ) representation with rounding center at `r`.
 
 # Arguments
@@ -232,12 +232,12 @@ continuous (ξ) representation with rounding center at `r`.
 # Output
     Array{Float64}(length(x)) with ξ = σ + X + r
 """
-function hybrid_to_cont(hybrid::Hybrid, r = 0.0)::Array{Float64}
+function hybrid_to_cont(hybrid::Hybrid, r=0.0)::Array{Float64}
     return hybrid[2] .+ hybrid[1] .+ r
 end
 
 """
-    cont_to_hybrid(V::Array{Float64,1}, 
+    cont_to_hybrid(V::Array{Float64,1},
                     r = 0.0)::Hybrid
 
 Separate the discrete and continuous components of the given distribution
@@ -253,20 +253,14 @@ OUTPUT:
     sigmas - Int8 arrays of binary spins (-1, +1)
     xs - Float64 array of displacements [-1, 1)
 """
-function cont_to_hybrid(Vinp::Array{Float64,1}, r = 0.0)::Hybrid
+function cont_to_hybrid(Vinp::Array{Float64,1}, r=0.0)::Hybrid
     V = mod.(Vinp .- r .+ 2, 4) .- 2
     sigmas = zeros(Int8, size(V))
     xs = zeros(Float64, size(V))
     # sigmas = sgn(V - r) # with sgn(0) := 1
     # xs = V - sigmas
-    for i in 1:length(V)
-        Vred = V[i]
-        (sigmas[i], xs[i]) =
-            if Vred >= 0
-                (1, Vred - 1)
-            else
-                (-1, Vred + 1)
-            end
+    for (i, Vi) in enumerate(V)
+        (sigmas[i], xs[i]) = Vi >= 0 ? (1, Vred - 1) : (-1, Vred + 1)
     end
     return (sigmas, xs)
 end
@@ -288,7 +282,7 @@ OUTPUT:
 
     NOTE: Obsolete, see `cont_to_hybrid`
 """
-function separate(Vinp::Array{Float64,1}, r = 0.0)
+function separate(Vinp::Array{Float64,1}, r=0.0)
     V = mod.(Vinp .- r .+ 2, 4) .- 2
     sigmas = zeros(Int8, size(V))
     xs = zeros(Float64, size(V))
@@ -318,7 +312,7 @@ Recover the dynamic variables from the separated representation.
 
 NOTE: Obsolete, see `hybrid_to_cont`
 """
-function combine(s::Array{Int8}, x::Array{Float64}, r = 0.0)
+function combine(s::Array{Int8}, x::Array{Float64}, r=0.0)
     return x .+ s .+ r
 end
 
@@ -337,7 +331,7 @@ function HammingD(s1::Array, s2::Array)
         end
     end
     return count
-    # return - s1 .* s2 + length(s1)    
+    # return - s1 .* s2 + length(s1)
 end
 
 """
@@ -352,7 +346,7 @@ OUTPUT:
       Sum_v (V_1(v) - V_2(v))^2
 """
 function EuclidD(V1::FVector, V2::FVector)
-    return sum((V1 .- V2).^2)
+    return sum((V1 .- V2) .^ 2)
 end
 
 
@@ -408,7 +402,7 @@ OUTPUT:
     Sum_e   w(e)(1 - e.1 e.2)/2
 """
 function cut_weighted(graph::SimpleWeightedGraph,
-                    conf::SpinConf)::Float64
+    conf::SpinConf)::Float64
     if nv(graph) != length(conf)
         println("ERROR: The configuration size $(length(conf)) and the graph size $(nv(graph)) do not match")
     end # side note: turned out to be useful
@@ -436,18 +430,18 @@ is binary or weighted, the respective cut function is called.
     ∑_e w(e)(1 - e.1 e.2)/2
 """
 function cut(graph::ModelGraph, conf::SpinConf)
-	if graph isa SimpleWeightedGraph
+    if graph isa SimpleWeightedGraph
         return cut_weighted(graph, conf)
-	else
+    else
         return cut_binary(graph, conf)
-	end
+    end
 end
 
 function cut(graph::ModelGraph, state::Hybrid)
     return cut(graph, state[1])
 end
 
-function get_random_cut(graph, V, trials = 10)
+function get_random_cut(graph, V, trials=10)
     (becu, _, _) = get_random_rounding(graph, V, trials)
     return becu
 end
@@ -458,7 +452,7 @@ function get_rate(VFull)
     # Returns a 1D array of magnitudes with the last element duplicated
     # to keep the same size as the number of time points in VFull
 
-    out = [sum((VFull[:,i + 1] - VFull[:,i]).^2) for i in 1:(size(VFull)[2] - 1)]
+    out = [sum((VFull[:, i+1] - VFull[:, i]) .^ 2) for i in 1:(size(VFull)[2]-1)]
     return sqrt.([out; out[end]])
 end
 
@@ -473,7 +467,7 @@ function cut_2(model, s::SpinConf, x::FVector)
     phix = 0
     graph = model.graph
     for edge in edges(graph)
-        phix += s[edge.src]*s[edge.dst]*abs(x[edge.src] - x[edge.dst])/2
+        phix += s[edge.src] * s[edge.dst] * abs(x[edge.src] - x[edge.dst]) / 2
     end
     return Dice.cut(graph, s) + phix
 end
@@ -523,11 +517,11 @@ function get_random_configuration(len::Int, p=0.5)::Array{Int8}
     #    return [randspin(p) for i in 1:len]
     out = Array{Int8}(undef, len)
     return map(x ->
-        if rand() < p
-            1
-        else
-            -1
-        end, out)
+            if rand() < p
+                1
+            else
+                -1
+            end, out)
 end
 
 # get_random_interval
@@ -549,7 +543,7 @@ function get_initial_2(Nvert::Int, (vmin, vmax), p=0.5)
     # NOTE: OBSOLETE, replaced by get_random_hybrid
 
     return realign_2((get_random_configuration(Nvert, p),
-                      get_initial(Nvert, (vmin, vmax))))
+        get_initial(Nvert, (vmin, vmax))))
 end
 
 function get_random_hybrid(Nvert::Int, (vmin, vmax), p=0.5)
@@ -559,7 +553,7 @@ function get_random_hybrid(Nvert::Int, (vmin, vmax), p=0.5)
     #
 
     return realign_2((get_random_configuration(Nvert, p),
-                      get_initial(Nvert, (vmin, vmax))))
+        get_initial(Nvert, (vmin, vmax))))
 end
 
 """
@@ -576,7 +570,7 @@ OUTPUT:
     Array{Float64}[1:Nvert] - points on sphere
 """
 function get_random_sphere(Nvert::Int, radius)
-	X = randn(Nvert)
+    X = randn(Nvert)
     X ./= sqrt.(X' * X)
     return X .* radius
 end
@@ -585,17 +579,13 @@ end
     get_random_cube(Nvert::Int, side)
 
 Return vector with `Nvert` random points uniformly distributed insde the
-cube with side length given by `side`.
+cube centered at the origin with side length given by `side`.
 
-# Arguments
-    Nvert::Int
-    side
-
-OUTPUT:
-    Array{Float64}[1:Nvert] - points inside the cube
+# Output
+    Array{Float64}[1:Nvert] ∈ [-side/2, side/2]^Nvert
 """
-function get_random_cube(Nvert::Int, side)
-    return side .* rand(Float64, Nvert)
+function get_random_cube(Nvert::Int, side)::FVector
+    return side .* (rand(Float64, Nvert) .- 0.5)
 end
 
 
@@ -616,10 +606,10 @@ include("hf.jl")
 ############################################
 
 """
-    flipconf(conf::Array, flip::Array{Int})
+    flipconf(conf::Vector{Int8}, flip::Vector{Int})
 
 Change configuration `conf` according to flips in the index array `flip`
-    
+
 # Arguments
     conf - {-1, 1}^N array containing the original string
     flip - array with indices where conf should be modified
@@ -627,12 +617,12 @@ Change configuration `conf` according to flips in the index array `flip`
 OUTPUT:
     a string at the H-distance sum(flip) from conf
 """
-function flipconf(conf::Array, flip::Array{Int})
+function flipconf(conf::SpinConf, flip::Vector{Int})
     conf[flip] .*= -1
     return conf
 end
 
-function majority_flip!(graph, conf::SpinConf, node)
+function majority_flip!(graph ::SimpleGraph, conf::SpinConf, node)
     # Flips conf[node] to be of the opposite sign to the majority of its neighbors
 
     flip_flag = false
@@ -647,7 +637,23 @@ function majority_flip!(graph, conf::SpinConf, node)
     return flip_flag
 end
 
-function majority_twoflip!(graph, conf::SpinConf, cut_edge)
+function majority_flip!(graph ::SimpleWeightedGraph, conf::SpinConf, node)
+    # Flips conf[node] to be of the opposite sign to the majority of its neighbors
+
+    flip_flag = false
+    tot = 0
+    for j in neighbors(graph, node)
+        tot += conf[node] * conf[j] * weights(graph)[node, j]
+    end
+    if tot > 0
+        conf[node] *= -1
+        flip_flag = true
+    end
+    return flip_flag
+end
+
+
+function majority_twoflip!(graph::SimpleGraph, conf::SpinConf, cut_edge)
     # Flips a cut pair if the edges adjacent to the cut edge
     # form the wrong majority
     # Preserves the node-majority
@@ -667,7 +673,7 @@ function majority_twoflip!(graph, conf::SpinConf, cut_edge)
     return flip_flag
 end
 
-function local_search(graph, conf::SpinConf)
+function local_search(graph::ModelGraph, conf::SpinConf)
     # Eliminates vertices breaking the majority rule
     # Attention, it changes conf
     # While it's ideologically off, it is useful for functional
@@ -683,7 +689,7 @@ function local_search(graph, conf::SpinConf)
 end
 
 """
-    local_search!(graph, conf)
+    local_search!(graph::ModelGraph, conf)
 
 Enforce the node majority rule in `conf` on `graph`, while changing
 `conf` in-place.
@@ -697,11 +703,11 @@ configurations yielding better cut within the Hamming distance one.
     graph - the graph object
     conf - {-1, 1}^N - the initial configuration
 
-OUTPUT:
+# Output
     count - the total number of passes
     `conf` is displaced to a locally optimal configuration
 """
-function local_search!(graph, conf::SpinConf)
+function local_search!(graph::ModelGraph, conf::SpinConf)
     nonstop = true
     count = 0
     while nonstop
@@ -714,7 +720,7 @@ function local_search!(graph, conf::SpinConf)
     return count
 end
 
-function local_twosearch(graph, conf::SpinConf)
+function local_twosearch(graph::SimpleGraph, conf::SpinConf)
     # Eliminates pairs breaking the edge-majority rule
     # Attention, it changes conf
     nonstop = true
@@ -730,7 +736,7 @@ function local_twosearch(graph, conf::SpinConf)
 end
 
 """
-    local_twosearch!(graph, conf)
+    local_twosearch!(graph::SimpleGraph, conf)
 
 Eliminate in-place pairs in configuration `conf' breaking the edge majority
 rule on `graph' and return the number of passes.
@@ -741,7 +747,7 @@ The configuration is presumed to satisfy the node majority rule.
 - `graph` - the graph object
 - `conf` - {-1, 1}^N array with the initial spin configuration
 """
-function local_twosearch!(graph, conf::SpinConf)
+function local_twosearch!(graph::SimpleGraph, conf::SpinConf)
     nonstop = true
     count = 0
     while nonstop
@@ -757,33 +763,30 @@ function local_twosearch!(graph, conf::SpinConf)
 end
 
 """
-    number_to_conf(number ::Int, len ::Int)::Array{Int8}
+    number_to_conf(number ::Int, len ::Int)::SpinConf
 
 Return an Int8-array of the `number`-th {-1, 1}-configuration of a model
 with `len` spins.
 
-This is `number` in the binary representation
-padded with leading zeros to length
+This is `number` in the binary representation padded with leading zeros to
+length
 """
-function number_to_conf(number ::Int, len ::Int)::Array{Int8}
-    preconf::Array{Int8} = digits(number, base=2, pad=len) |> reverse
+function number_to_conf(number::Int, len::Int)::SpinConf
+    preconf::SpinConf = digits(number, base=2, pad=len) |> reverse
     return 2 .* preconf .- 1
 end
 
-function conf_to_number(conf::SpinConf)
-    # Convert conf as a binary number to its decimal representation
+"""
+    conf_to_number(conf::SpinConf)::Int
 
-    # TODO: This function is rarely needed, hence the dumb code.
-    #        I'm not even sure it works correctly
-    #        It must be checked against big-endian/little-endian
-    binconf = (conf .+ 1) ./ 2
+Evaluate the number of configuration `conf`.
 
-    out = 0
-    for i in 1:length(binconf)
-        out += binconf[i] * 2^(i - 1)
-    end
-
-    return out
+The number is obtained by treating `conf` as a binary number and converting
+it to its decimal representation. Inverse of [`number_to_conf!`](@ref).
+"""
+function conf_to_number(conf::SpinConf)::Int
+    str_form = map(x -> x == 1 ? "1" : x == -1 ? "0" : "X", conf) |> join
+    return parse(Int, str_form, base=2)
 end
 
 ### Graph generation
@@ -792,36 +795,18 @@ end
 # that the graphs are connected (for Erdos-Renyi, Graphs may
 # return disconnected graph).
 
-function get_connected(Nvert, prob)
-    # Generate a connected Erdos-Renyi graph with `Nvert`
-    # vertices and `prob` density of edges
-    # More precisely. On the set of edges of a complete graph
-    # K_{Nvert}, we have a (Bernoulli process) function F,
-    # which takes values 1 and 0 with probabilities prob and
-    # 1 - prob, respectively.
-    # The output graph is a connected subgraph of K_{Nvert} with
-    # only edges where F = 1 kept in the set of edges.
-    #
-    # NOTE Obsolete See get_ER_graph
-    cnct = false
-    G = Graph()
-    while !cnct
-        G = erdos_renyi(Nvert, prob)
-        cnct = is_connected(G)
-    end
-    return G
-end
+"""
+    get_ER_graph(Nvert::Int, prob::Float64)::SimpleGraph
 
+Generate a connected Erdos-Renyi graph with `Nvert`
+vertices and `prob` density of edges.
+
+On the set of edges of a complete graph ``K_{Nvert}``, we have a (Bernoulli
+process) function ``F`` taking values 1 and 0 with probabilities ``p`` and
+``1 - p``, respectively. The output graph is a connected subgraph of
+``K_{Nvert}`` with only edges where ``F = 1`` kept in the set of edges.
+"""
 function get_ER_graph(Nvert::Int, prob::Float64)::SimpleGraph
-    # Generate a connected Erdos-Renyi graph with `Nvert`
-    # vertices and `prob` density of edges
-    # More precisely. On the set of edges of a complete graph
-    # K_{Nvert}, we have a (Bernoulli process) function F,
-    # which takes values 1 and 0 with probabilities prob and
-    # 1 - prob, respectively.
-    # The output graph is a connected subgraph of K_{Nvert} with
-    # only edges where F = 1 kept in the set of edges.
-
     while true
         G = erdos_renyi(Nvert, prob)
         is_connected(G) && return G
@@ -844,10 +829,10 @@ end
 ##########################################################
 
 function step_rate(graph::SimpleGraph, method::Function,
-                   V::FVector)::FVector
-# Evaluate ΔV (continuous representation) in a single step
-# Deals with {0,1}-weighted graphs, isotropic, noiseless
-    out  = zeros(Float64, size(V))
+    V::FVector)::FVector
+    # Evaluate ΔV (continuous representation) in a single step
+    # Deals with {0,1}-weighted graphs, isotropic, noiseless
+    out = zeros(Float64, size(V))
     for node in vertices(graph)
         Vnode = V[node]
         for neib in neighbors(graph, node)
@@ -858,10 +843,10 @@ function step_rate(graph::SimpleGraph, method::Function,
 end
 
 function step_rate(graph::SimpleWeightedGraph, method::Function,
-                   V::FVector)::FVector
-# Evaluate ΔV (continuous representation) in a single step
-# Deals with weighted graphs, isotropic, noiseless
-    out  = zeros(Float64, size(V))
+    V::FVector)::FVector
+    # Evaluate ΔV (continuous representation) in a single step
+    # Deals with weighted graphs, isotropic, noiseless
+    out = zeros(Float64, size(V))
     for node in vertices(graph)
         Vnode = V[node]
         for neib in neighbors(graph, node)
@@ -894,12 +879,12 @@ function update_hybrid!(spins::SpinConf, xs::FVector, dx::FVector)
 end
 
 function step_rate_hybrid(graph::SimpleGraph, coupling::Function,
-                     s::SpinConf, x::FVector)::FVector
+    s::SpinConf, x::FVector)::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
         for neib in neighbors(graph, node)
-            out[node] += s[neib]*coupling(xnode, x[neib])
+            out[node] += s[neib] * coupling(xnode, x[neib])
         end
     end
     out .*= s
@@ -907,13 +892,13 @@ function step_rate_hybrid(graph::SimpleGraph, coupling::Function,
 end
 
 function step_rate_hybrid(graph::SimpleWeightedGraph, coupling::Function,
-                     s::SpinConf, x::FVector)::FVector
+    s::SpinConf, x::FVector)::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
         for neib in neighbors(graph, node)
-            out[node] += s[neib]*coupling(xnode, x[neib])*
-                graph.weights[node, neib]
+            out[node] += s[neib] * coupling(xnode, x[neib]) *
+                         graph.weights[node, neib]
         end
     end
     out .*= s
@@ -922,7 +907,7 @@ end
 
 
 function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
-                      method::Function, Vini)
+    method::Function, Vini)
     # Advances the graph duration - 1 steps forward
     # This is the verbose version, which returns the full dynamics
     #
@@ -936,7 +921,7 @@ function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
     VFull = Vini
     V = Vini
 
-    for _ = 1:(tmax - 1)
+    for _ = 1:(tmax-1)
         ΔV = scale .* step_rate(graph, method, V)
         V += ΔV
         VFull = [VFull V]
@@ -956,11 +941,11 @@ function trajectories(model::Model, duration, Vini)
     # OUTPUT:    #   VFull = [V(0) V(1) ... V(duration-1)]
 
     return trajectories(model.graph, duration, model.scale,
-                        model.coupling, Vini)
+        model.coupling, Vini)
 end
 
 function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
-                      mtd::Function, start::Hybrid)
+    mtd::Function, start::Hybrid)
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     # Keeps the full history of progression
@@ -969,24 +954,24 @@ function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
 
     SFull = start[1]
     XFull = start[2]
-    
-    for _ = 1:(tmax - 1)
-        DX = step_rate_2(graph, mtd, S, X).*scale
+
+    for _ = 1:(tmax-1)
+        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
         update_hybrid!(S, X, DX)
         XFull = [XFull X]
-        SFull = [SFull S]        
+        SFull = [SFull S]
     end
     return (SFull, XFull)
 end
 
 function trajectories(model::Model, tmax::Int, start::Hybrid)
     return trajectories(model.graph, tmax, model.scale,
-                        model.coupling, start)
+        model.coupling, start)
 end
 
 
 function propagate(graph::ModelGraph, tmax::Int, scale::Float64,
-                   method::Function, Vini::FVector)::FVector
+    method::Function, Vini::FVector)::FVector
     # Advances the graph duration - 1 steps forward
     # This is the short version, which returns only the final state vector
     #
@@ -1000,7 +985,7 @@ function propagate(graph::ModelGraph, tmax::Int, scale::Float64,
     # NOTE: the order of parameters changed in 0.2.0
 
     V = Vini
-    for _ = 1:(tmax - 1)
+    for _ = 1:(tmax-1)
         V += scale .* step_rate(graph, method, V)
     end
 
@@ -1018,17 +1003,17 @@ function propagate(model::Model, tmax::Int, Vini)
     # OUTPUT:
     #   [V[1] .. V[nv(graph)] at t = duration - 1
     return propagate(model.graph, tmax, model.scale,
-                     model.coupling, Vini)
+        model.coupling, Vini)
 end
 
 function propagate(graph::ModelGraph, tmax::Int, scale::Float64,
-                   mtd::Function, start::Hybrid)::Hybrid
+    mtd::Function, start::Hybrid)::Hybrid
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     S = start[1]
     X = start[2]
-    for _ = 1:(tmax - 1)
-        DX = step_rate_hybrid(graph, mtd, S, X).*scale
+    for _ = 1:(tmax-1)
+        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
         update_hybrid!(S, X, DX)
     end
     return (S, X)
@@ -1038,9 +1023,81 @@ function propagate(model::Model, tmax::Int, start::Hybrid)::Hybrid
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     return propagate(model.graph, tmax, model.scale,
-                     model.coupling, start)
+        model.coupling, start)
 end
 
+###############################################################
+##
+## (TEMP) Methods propagating the system with pinned spins 
+##
+###############################################################
+
+function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                          mtd::Function, start::Hybrid,
+                          pinned::Vector{Tuple{Int64, Int8}})::Hybrid
+    # Advances the model in the initial state (Sstart, Xstart)
+    # for tmax time steps with pinned spins in pinned
+    S = start[1]
+    X = start[2]
+    # ensure that pins are set correctly for the interface unifomity
+    for pin in pinned
+        S[pin[1]] = pin[2]
+        X[pin[1]] = 0.0
+    end
+
+    for _ = 1:(tmax-1)
+        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
+        update_hybrid!(S, X, DX)
+        for pin in pinned
+            S[pin[1]] = pin[2]
+            X[pin[1]] = 0.0
+        end
+    end
+    return (S, X)
+end
+
+function propagate_pinned(model::Model, tmax::Int, start::Hybrid,
+                          pinned::Vector{Tuple{Int64, Int8}})::Hybrid
+    # Advances the model in the initial state (Sstart, Xstart)
+    # for tmax time steps with pinned spins in pinned
+    return propagate_pinned(model.graph, tmax, model.scale,
+        model.coupling, start, pinned)
+end
+
+function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                             mtd::Function, start::Hybrid,
+                             pinned::Vector{Tuple{Int64, Int8}})
+    # Advances the model in the initial state (Sstart, Xstart)
+    # for tmax time steps
+    # Keeps the full history of progression
+    S = start[1]
+    X = start[2]
+    for pin in pinned
+        S[pin[1]] = pin[2]
+        X[pin[1]] = 0.0
+    end
+
+    SFull = start[1]
+    XFull = start[2]
+
+    for _ = 1:(tmax-1)
+        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
+        update_hybrid!(S, X, DX)
+        for pin in pinned
+            S[pin[1]] = pin[2]
+            X[pin[1]] = 0.0
+        end
+        XFull = [XFull X]
+        SFull = [SFull S]
+    end
+    return (SFull, XFull)
+end
+
+function trajectories_pinned(model::Model, tmax::Int, start::Hybrid,
+                             pinned::Vector{Tuple{Int64, Int8}})
+    return trajectories_pinned(model.graph, tmax, model.scale,
+        model.coupling, start, pinned)
+end
 
 ########################################################
 ##
@@ -1055,7 +1112,7 @@ include("dyn_anisotropy_model.jl")
 ## (mostly deprecated legacies)
 ##
 
-function realign_hybrid(conf::Hybrid, r = 0.0)::Hybrid
+function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     # Changes the reference point for the separated representation by `r`
     # according to xi - r = sigma(r) + X(r)
     # INPUT & OUTPUT:
@@ -1064,14 +1121,14 @@ function realign_hybrid(conf::Hybrid, r = 0.0)::Hybrid
     return Dice.cont_to_hybrid(V, r)
 end
 
-function realign_2(conf::Hybrid, r = 0.0)
+function realign_2(conf::Hybrid, r=0.0)
     # Changes the reference point for the separated representation by `r`
     # according to xi - r = sigma(r) + X(r)
     # INPUT & OUTPUT:
     #     conf = (sigma, X)
     #
     # NOTE: Obsolete, replaced by realign_hybrid
-#    V = Dice.hybrid_to_cont(conf[1], conf[2])
+    #    V = Dice.hybrid_to_cont(conf[1], conf[2])
     V = Dice.hybrid_to_cont(conf)
     return Dice.cont_to_hybrid(V, r)
 end
@@ -1113,16 +1170,16 @@ function propagate_2(model::Model, tmax, Sstart::SpinConf, Xstart::FVector)
     mtd = model.coupling
     # Ns = model.Ns
     # noise = model.noise
-    for _ = 1:(tmax - 1)
-#        DX = step_rate_hybrid(graph, mtd, S, X, Ns, noise).*scale
-        DX = step_rate_hybrid(graph, mtd, S, X).*scale
+    for _ = 1:(tmax-1)
+        #        DX = step_rate_hybrid(graph, mtd, S, X, Ns, noise).*scale
+        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
         update_2!(S, X, DX)
     end
     return (S, X)
 end
 
 function trajectories_2(model::Model, tmax, Sstart::SpinConf,
-                        Xstart::FVector)
+    Xstart::FVector)
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     # Keeps the full history of progression
@@ -1133,21 +1190,21 @@ function trajectories_2(model::Model, tmax, Sstart::SpinConf,
 
     XFull = Xstart
     SFull = Sstart
-    
+
     graph = model.graph
     scale = model.scale
     mtd = model.coupling
     # Ns = model.Ns
     # noise = model.noise
-    for _ = 1:(tmax - 1)
-#        DX = step_rate_hybrid(graph, mtd, S, X, Ns, noise).*scale
-        DX = step_rate_hybrid(graph, mtd, S, X).*scale
+    for _ = 1:(tmax-1)
+        #        DX = step_rate_hybrid(graph, mtd, S, X, Ns, noise).*scale
+        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
         update_2!(S, X, DX)
         XFull = [XFull X]
-        SFull = [SFull S]        
+        SFull = [SFull S]
     end
     return (SFull, XFull)
-end    
+end
 
 ############################################################
 #
