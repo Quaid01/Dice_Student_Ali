@@ -20,9 +20,22 @@ The source files of ~Dice~
 
 =hf.jl= - a temporary hack for scanning Hamming vicinities
 
-=methods.jl= - the library of dynamical models
+=dynamical_kernels.jl= - the library of dynamical models
 
-=dyn_anisotropy_model.jl= - Methods for treating anisotropy (local landscape) dynamically
+=dyn_anisotropy_model.jl= - Methods for treating anisotropy (local
+landscape) dynamically
+
+=advancement_methods.jl= -
+
+=file_operations.jl= -
+
+=rounding_methods.jl= -
+
+=simulations.jl= -
+
+=statistical_methods.jl= -
+
+=vars.jl= -
 
 # Notes
 
@@ -43,23 +56,17 @@ cut_2(model, (s,x), binaryonly = true) doesn't seem wise.
 
   4. Relaxed cut functions with the passed method
 
-  5. Fix the chain of types
+  5. Clean up dynamical kernels: categorize, consistent naming
 
-  6. Clean up dynamical kernels: categorize, consistent naming
+  6. Enable LUT-defined methods
 
-  7. Enable LUT-defined methods
-
-  8. Extend dynamical models
+  7. Extend dynamical models
      a. Linear terms in Hamiltonian (field effect)
      b. State independent force (noise)
      c. Inhomogeneous dynamics (node dependent)
 
-  9. Implement logging
+  8. Implement logging
 
-  10. [KILL] Admit differential equations for continuous time machines
+  9. Redesign: implement consistently the notion of functions on the graph
 
-  11. Redesign: implement consistently the notion of functions on the graph
-
-  12. Redesign: incorporate linear terms
-
-  13. Error handling
+  10. Error handling

@@ -528,23 +528,13 @@ end
 function get_initial(Nvert::Int, (vmin, vmax))
     # Generate random vector with Nvert components uniformly
     #  distributed in the (vmin, vmax) interval
-
+    # NOTE: OBSOLETE, replaced by get_random_sphere or get_random_cube
     bot, top = minmax(vmin, vmax)
     mag = top - bot
 
     return mag .* rand(Float64, Nvert) .+ bot
 end
 
-function get_initial_2(Nvert::Int, (vmin, vmax), p=0.5)
-    # Generate random configuration of length `Nvert` in the separated
-    # representation with the continuous component uniformly distributed
-    # in the (vmin, vmax) interval
-    #
-    # NOTE: OBSOLETE, replaced by get_random_hybrid
-
-    return realign_2((get_random_configuration(Nvert, p),
-        get_initial(Nvert, (vmin, vmax))))
-end
 
 function get_random_hybrid(Nvert::Int, (vmin, vmax), p=0.5)
     # Generate random configuration of length `Nvert` in the separated
@@ -553,7 +543,7 @@ function get_random_hybrid(Nvert::Int, (vmin, vmax), p=0.5)
     #
 
     return realign_2((get_random_configuration(Nvert, p),
-        get_initial(Nvert, (vmin, vmax))))
+        get_random_cube(Nvert, (vmin, vmax))))
 end
 
 """
@@ -1121,18 +1111,6 @@ function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     return Dice.cont_to_hybrid(V, r)
 end
 
-function realign_2(conf::Hybrid, r=0.0)
-    # Changes the reference point for the separated representation by `r`
-    # according to xi - r = sigma(r) + X(r)
-    # INPUT & OUTPUT:
-    #     conf = (sigma, X)
-    #
-    # NOTE: Obsolete, replaced by realign_hybrid
-    #    V = Dice.hybrid_to_cont(conf[1], conf[2])
-    V = Dice.hybrid_to_cont(conf)
-    return Dice.cont_to_hybrid(V, r)
-end
-
 function update_2!(spins::SpinConf, xs::FVector, dx::FVector)
     # Tracing version
     # Update the continuous component (xs) by dx using the wrapping rule
@@ -1158,53 +1136,6 @@ function update_2!(spins::SpinConf, xs::FVector, dx::FVector)
     return count
 end
 
-function propagate_2(model::Model, tmax, Sstart::SpinConf, Xstart::FVector)
-    # Advances the model in the initial state (Sstart, Xstart)
-    # for tmax time steps
-    #
-    # NOTE: Legacy version, use dispatched propagate instead
-    X = Xstart
-    S = Sstart
-    graph = model.graph
-    scale = model.scale
-    mtd = model.coupling
-    # Ns = model.Ns
-    # noise = model.noise
-    for _ = 1:(tmax-1)
-        #        DX = step_rate_hybrid(graph, mtd, S, X, Ns, noise).*scale
-        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
-        update_2!(S, X, DX)
-    end
-    return (S, X)
-end
-
-function trajectories_2(model::Model, tmax, Sstart::SpinConf,
-    Xstart::FVector)
-    # Advances the model in the initial state (Sstart, Xstart)
-    # for tmax time steps
-    # Keeps the full history of progression
-    #
-    # NOTE: Legacy version, use dispatched trajectories instead
-    X = Xstart
-    S = Sstart
-
-    XFull = Xstart
-    SFull = Sstart
-
-    graph = model.graph
-    scale = model.scale
-    mtd = model.coupling
-    # Ns = model.Ns
-    # noise = model.noise
-    for _ = 1:(tmax-1)
-        #        DX = step_rate_hybrid(graph, mtd, S, X, Ns, noise).*scale
-        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
-        update_2!(S, X, DX)
-        XFull = [XFull X]
-        SFull = [SFull S]
-    end
-    return (SFull, XFull)
-end
 
 ############################################################
 #
@@ -1212,5 +1143,12 @@ end
 #
 ############################################################
 include("simulations.jl")
+
+############################################################
+#
+### Assorted deprecated methods
+#
+############################################################
+include("deprecated.jl")
 
 end # end of module Dice
