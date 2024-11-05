@@ -89,6 +89,8 @@ if isfile(configFile)
     params[:isRegular] = params[:genModel] == "regular"
     if !params[:isRegular]
         params[:ER_p] = parse(Float64, get(config, "Model", "probability", "0.1"))
+    end
+    
     params[:degree] = parse(Int64, get(config, "Model", "degree", default[:degree]))
 
     strn = get(config, "System", "Nodes", default[:nodes])
@@ -96,7 +98,7 @@ if isfile(configFile)
     Nodes_array = parse.(Int64, split(strn, " "))
     println("Nodes : ", strn)
 else
-    println("The ini-file is not found. Hard-coded default parameters are used.")
+    println("The ini-file is not found. Default parameters are used.")
 end
 
 # These are common fields written to the local batches config files
@@ -107,14 +109,15 @@ set(batch_config, "Output", "Size", params[:sample_size])
 set(batch_config, "Model", "model", params[:genModel])
 set(batch_config, "Model", "degree", params[:degree])
 
-for noInd in 1:length(Nodes_array)
+for noInd in eachindex(Nodes_array)
     local targetDir
 
     print(" Nodes : $(Nodes_array[noInd])")
 
     NumNodes = Nodes_array[noInd]
 
-    targetDir = string(params[:prefixDir], "-", NumNodes)
+    # targetDir = string(params[:prefixDir], "-", NumNodes)
+    targetDir = "$(params[:prefixDir])-$NumNodes"
 
     # create the target directory if it doesn't exist
     if !isdir(targetDir)
@@ -131,14 +134,14 @@ for noInd in 1:length(Nodes_array)
         write(io, batch_config)
     end
 
-    listFile = open(baseName * sample_listFile, "w")
-    for i in 1:SampleSize
+    listFile = open(baseName * params[:sample_list], "w")
+    for i in 1:params[:sample_size]
         G = params[:isRegular] ?
-            Dice.get_regular_graph(NumNodes, Degree) :
+            Dice.get_regular_graph(NumNodes, params[:degree]) :
             Dice.get_ER_graph(NumNodes, params[:ER_p])
 
-        filename = string(baseName, stdPrefix, "-", i)
-        Dice.dumpGraph(G, filename)
+        filename = baseName * params[:prefixFile] * "-$i"
+        Dice.saveMTXGraph(G, filename)
         println(listFile, filename)
     end
     close(listFile)
@@ -150,4 +153,5 @@ open(params[:batch_list], "w") do io
         println(io, elem)
     end
 end
-println("The list of created directories is stored in ", params[:batch_list])
+    
+println("The list of created directories is stored in $(params[:batch_list])")
