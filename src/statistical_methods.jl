@@ -1,22 +1,23 @@
 # Statistical methods
 
 """
-    integer_distribution(arr)
+    integer_distribution(arr::Vector{Int})::Tuple{Vector{Int}, Vector{Float64}}
 
 Evaluate a discrete (over integers) distribution function inferred from
 the provided sample `arr`.
 
 For each integer in [mininum(arr), maximum(arr)], the function counts
-the number of incidences.
+the relative number of incidences.
 
-INPUT:
-    arr - empirical sample of the distribution function
+# INPUT:
+    `arr::Vector{Int})` - empirical sample of the distribution function
 
-OUTPUT:
-    x - values sampled in `arr`
-    p(x) - occurence probabilities
+# OUTPUT:
+    `(x::Vector{Int}, p(x)::Vector{Float64})`, where
+    `x` - values sampled in `arr`
+    `p(x)` - occurence probabilities
 """
-function integer_distribution(arr::Array{Int, 1})
+function integer_distribution(arr::Vector{Int}) ::Tuple{Vector{Int}, Vector{Float64}}
 
     vals::Array{Int, 1} = []
     pval::Array{Float64, 1} = []
@@ -32,6 +33,49 @@ function integer_distribution(arr::Array{Int, 1})
         ind += elems[end]
     end
     return (vals, pval./numPoints)
+end
+
+"""
+    cumulative_integer_distribution(arr::Vector{Int}) ::Tuple{Vector{Int},
+                                                              Vector{Float64}} 
+
+Evaluate a cumulative discrete distribution function over integers inferred
+from the samples provided in `arr`.
+
+For each integer `val` in [mininum(arr), maximum(arr)], the function counts
+the relative number of values in `arr` strictly smaller than `val`.
+
+# INPUT:
+    `arr::Vector{Int})` - empirical sample of the distribution function
+
+# OUTPUT:
+    `(x::Vector{Int}, p(x)::Vector{Float64})`, where
+    ``x`` - values sampled in `arr`
+    ``p(x) = P(a < x)`` - probability to encounter value smaller than `x`
+"""
+function cumulative_integer_distribution(arr::Vector{Int}) ::Tuple{Vector{Int},
+                                                                   Vector{Float64}}
+    arr = sort(arr)
+    numPoints = length(arr)
+    
+    vals::Vector{Int} = [arr[1] - 1]
+    pval::Array{Float64} = [0.0]
+    ind = 1 # scanning index
+    while ind <= numPoints
+        val = arr[ind]
+        over_pos = findfirst(y -> y > val, arr[ind:end])
+        if over_pos isa Nothing
+            push!(vals, val + 1)
+            push!(pval, numPoints)
+            return (vals, pval./numPoints)
+        end
+        
+        push!(vals, val)
+        push!(pval, pval[end] + over_pos - ind)
+        ind = over_pos
+    end
+    # should never get here
+    @error "Assertion error in cumulative_integer_distribution"
 end
 
 function av_dispersion(graph::SimpleGraph, V)
