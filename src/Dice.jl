@@ -895,6 +895,24 @@ function step_rate_hybrid(graph::SimpleWeightedGraph, coupling::Function,
     return out
 end
 
+function step_rate_hybrid_pinned(graph::SimpleWeightedGraph, coupling::Function,
+    s::SpinConf, x::FVector, pinned::Vector{Int64})::FVector
+    out = zeros(Float64, size(x))
+    for node in vertices(graph)
+        if node in pinned
+            continue
+        end
+        
+        xnode = x[node]
+        for neib in neighbors(graph, node)
+            out[node] += s[neib] * coupling(xnode, x[neib]) *
+                         graph.weights[node, neib]
+        end
+    end
+    out .*= s
+    return out
+end
+
 
 function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
     method::Function, Vini)
@@ -1022,6 +1040,15 @@ end
 ##
 ###############################################################
 
+"""
+    propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                          mtd::Function, start::Hybrid,
+                          pinned::Vector{Tuple{Int64, Int8}})::Hybrid
+
+Advance the network set on `graph` governed by the dynamical kernel `mtd`
+in the initial state `start` for `tmax` steps each of duration `scale` with
+spins listed in `pinned` fixed.
+"""
 function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
                           mtd::Function, start::Hybrid,
                           pinned::Vector{Tuple{Int64, Int8}})::Hybrid
@@ -1034,14 +1061,14 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
         S[pin[1]] = pin[2]
         X[pin[1]] = 0.0
     end
-
+    pin_pos = [pin[1] for pin in pinned]
     for _ = 1:(tmax-1)
-        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
+        DX = step_rate_hybrid_pinned(graph, mtd, S, X, pin_pos) .* scale
         update_hybrid!(S, X, DX)
-        for pin in pinned
-            S[pin[1]] = pin[2]
-            X[pin[1]] = 0.0
-        end
+        # for pin in pinned
+        #     S[pin[1]] = pin[2]
+        #     X[pin[1]] = 0.0
+        # end
     end
     return (S, X)
 end

@@ -61,9 +61,9 @@ function cumulative_integer_distribution(arr::Vector{Int}) ::Tuple{Vector{Int},
     vals::Vector{Int} = [arr[1] - 1]
     pval::Array{Float64} = [0.0]
     ind = 1 # scanning index
-    while ind <= numPoints
+    while ind < numPoints
         val = arr[ind]
-        over_pos = findfirst(y -> y > val, arr[ind:end])
+        over_pos = findfirst(y -> y > val, arr[(ind + 1):end])
         if over_pos isa Nothing
             push!(vals, val + 1)
             push!(pval, numPoints)
@@ -71,11 +71,13 @@ function cumulative_integer_distribution(arr::Vector{Int}) ::Tuple{Vector{Int},
         end
         
         push!(vals, val)
-        push!(pval, pval[end] + over_pos - ind)
-        ind = over_pos
+        push!(pval, pval[end] + over_pos)
+        ind += over_pos
     end
-    # should never get here
-    @error "Assertion error in cumulative_integer_distribution"
+    # we get here if the last point is an outlier
+    push!(vals, arr[ind] + 1)
+    push!(pval, numPoints)
+    return (vals, pval./numPoints)
 end
 
 function av_dispersion(graph::SimpleGraph, V)
