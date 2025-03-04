@@ -598,6 +598,13 @@ function flipconf(conf::SpinConf, flip::Vector{Int})
     return conf
 end
 
+"""
+    majority_flip!(graph ::{SimpleGraph, SimpleWeightedGraph}, conf::SpinConf, node)
+
+For `graph` in state `conf`, compare the weights of cut and uncut edges
+incident to `node`. If the weight of uncut edges is smaller, flip the
+`node`'s spin. Return `true` if the spin was flipped.
+"""
 function majority_flip!(graph ::SimpleGraph, conf::SpinConf, node)
     # Flips conf[node] to be of the opposite sign to the majority of its neighbors
 
