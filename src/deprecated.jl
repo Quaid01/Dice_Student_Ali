@@ -72,3 +72,54 @@ function trajectories_2(model::Model, tmax, Sstart::SpinConf,
     end
     return (SFull, XFull)
 end
+
+"""
+    separate(V::Array{Float64,1}, r = 0.0)
+
+Separate the discrete and continuous components of the given distribution
+according to V = sigma + X + r, where sigma ∈ {-1, +1}^N, X ∈ [-1, 1)^N,
+and -2 < r < 2 is the rounding center.
+
+# Arguments
+    V - array to process
+    r - the rounding center
+
+OUTPUT:
+    sigmas - integer arrays of binary spins (-1, +1)
+    xs - array of displacements [-1, 1)
+
+    NOTE: Obsolete, see `cont_to_hybrid`
+"""
+function separate(Vinp::Array{Float64,1}, r=0.0)
+    V = mod.(Vinp .- r .+ 2, 4) .- 2
+    sigmas = zeros(Int8, size(V))
+    xs = zeros(Float64, size(V))
+    # sigmas = sgn(V - r) # with sgn(0) := 1
+    # xs = V - sigmas
+    for i in 1:length(V)
+        Vred = V[i]
+        (sigmas[i], xs[i]) =
+            if Vred >= 0
+                (1, Vred - 1)
+            else
+                (-1, Vred + 1)
+            end
+    end
+    return (sigmas, xs)
+end
+
+"""
+    combine(s::Array{Int8, x::Array{Float64}, r = 0.0)
+
+Recover the dynamic variables from the separated representation.
+
+# Arguments
+    s - the {-1, 1} array containing the discrete component
+    x - the array with the continuous component
+    r - the rounding center (default = 0)
+
+NOTE: Obsolete, see `hybrid_to_cont`
+"""
+function combine(s::Array{Int8}, x::Array{Float64}, r=0.0)
+    return x .+ s .+ r
+end

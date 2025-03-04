@@ -217,7 +217,7 @@ function roundup(V::Array{Float64})
 end
 
 """
-    hybrid_to_cont(hybrid::Hybrid, r = 0.0)::Array{Float64}
+    hybrid_to_cont(hybrid::Hybrid, r::Float64 = 0.0)::Array{Float64}
 
 Convert the `hybrid` (σ, X) representation to the
 continuous (ξ) representation with rounding center at `r`.
@@ -232,106 +232,94 @@ continuous (ξ) representation with rounding center at `r`.
 # Output
     Array{Float64}(length(x)) with ξ = σ + X + r
 """
-function hybrid_to_cont(hybrid::Hybrid, r=0.0)::Array{Float64}
+function hybrid_to_cont(hybrid::Hybrid, r::Float64 = 0.0)::Array{Float64}
     return hybrid[2] .+ hybrid[1] .+ r
 end
 
 """
-    cont_to_hybrid(V::Array{Float64,1},
-                    r = 0.0)::Hybrid
+    hybrid_to_cont(hybrid::Hybrid, k::Vector{Int})::Vector{Float64}
+
+Convert the `hybrid` (σ, X) representation to the
+continuous (ξ) representation with rounding center at `4 k`, as
+prescribed by the definition of the relaxed spin.
+
+# Arguments
+- `hybrid::Hybrid` = (s, x), where
+ `s` - the {-1, 1}-array containing the discrete component
+ `x` - the array with the continuous component
+
+- `k` - array of the period displacements for each node
+
+# Output
+    Vector{Float64}(length(x)) with ξ = σ + X + 4k
+"""
+function hybrid_to_cont(hybrid::Hybrid, k::Vector{Int})::Vector{Float64}
+    return hybrid[2] .+ hybrid[1] .+ 4 .* k
+end
+
+function hybrid_to_cont_series(hybrid_series::Vector{Hybrid}) ::Vector{Vector{Float64}}
+    k_vec = zeros(Int, length(hybrid_series[1][1]))
+    xi_series::Vector{Vector{Float64}} = []
+    push!(xi_series, hybrid_to_cont(hybrid_series[1], k_vec))
+
+    for i in 2:length(hybrid_series)
+        cur = hybrid_series[i]
+        prev = hybrid_series[i - 1]
+        flips = findall(x -> x != 0, cur[1] - prev[1])
+        for ind in flips
+            if cur[2][ind] > prev[2][ind] && cur[1][ind] > prev[1][ind]
+                k_vec[ind] -= 1
+            elseif cur[2][ind] < prev[2][ind] && cur[1][ind] < prev[1][ind]
+                k_vec[ind] += 1
+            end
+        end
+        push!(xi_series, hybrid_to_cont(cur, k_vec))
+    end
+    return xi_series
+end
+
+"""
+    cont_to_hybrid(V::Vector{Float64},
+                    r::Float64 = 0.0)::Hybrid
 
 Separate the discrete and continuous components of the given distribution
 according to V = sigma + X + r, where ``sigma ∈ {-1, +1}^N``, ``X ∈ [-1, 1)^N``,
 and ``-2 < r < 2`` is the rounding center.
 
 # Arguments
-    V - array to process
+    V - array with continuous values of dynamical variables to process
     r - the rounding center
 
 OUTPUT:
-    Hybrid = Tuple (sigmas, x), where
-    sigmas - Int8 arrays of binary spins (-1, +1)
-    xs - Float64 array of displacements [-1, 1)
+    Hybrid = Tuple (sigmas, xs), where
+           sigmas - Int8 arrays of binary spins (-1, +1)
+           xs - Float64 array of displacements [-1, 1)
 """
-function cont_to_hybrid(Vinp::Array{Float64,1}, r=0.0)::Hybrid
+function cont_to_hybrid(Vinp::Vector{Float64}, r::Float64 = 0.0)::Hybrid
     V = mod.(Vinp .- r .+ 2, 4) .- 2
     sigmas = zeros(Int8, size(V))
     xs = zeros(Float64, size(V))
     # sigmas = sgn(V - r) # with sgn(0) := 1
     # xs = V - sigmas
     for (i, Vi) in enumerate(V)
-        (sigmas[i], xs[i]) = Vi >= 0 ? (1, Vred - 1) : (-1, Vred + 1)
+        (sigmas[i], xs[i]) = Vi >= 0 ? (1, Vi - 1) : (-1, Vi + 1)
     end
     return (sigmas, xs)
 end
 
-"""
-    separate(V::Array{Float64,1}, r = 0.0)
-
-Separate the discrete and continuous components of the given distribution
-according to V = sigma + X + r, where sigma ∈ {-1, +1}^N, X ∈ [-1, 1)^N,
-and -2 < r < 2 is the rounding center.
-
-# Arguments
-    V - array to process
-    r - the rounding center
-
-OUTPUT:
-    sigmas - integer arrays of binary spins (-1, +1)
-    xs - array of displacements [-1, 1)
-
-    NOTE: Obsolete, see `cont_to_hybrid`
-"""
-function separate(Vinp::Array{Float64,1}, r=0.0)
-    V = mod.(Vinp .- r .+ 2, 4) .- 2
-    sigmas = zeros(Int8, size(V))
-    xs = zeros(Float64, size(V))
-    # sigmas = sgn(V - r) # with sgn(0) := 1
-    # xs = V - sigmas
-    for i in 1:length(V)
-        Vred = V[i]
-        (sigmas[i], xs[i]) =
-            if Vred >= 0
-                (1, Vred - 1)
-            else
-                (-1, Vred + 1)
-            end
-    end
-    return (sigmas, xs)
-end
 
 """
-    combine(s::Array{Int8, x::Array{Float64}, r = 0.0)
+    HammingD(s1::Vector, s2::Vector)
 
-Recover the dynamic variables from the separated representation.
-
-# Arguments
-    s - the {-1, 1} array containing the discrete component
-    x - the array with the continuous component
-    r - the rounding center (default = 0)
-
-NOTE: Obsolete, see `hybrid_to_cont`
-"""
-function combine(s::Array{Int8}, x::Array{Float64}, r=0.0)
-    return x .+ s .+ r
-end
-
-
-"""
-    HammingD(s1::Array, s2::Array)
-
-Evaluate the Hamming distance between binary {-1, 1}-strings `s1` and `s2` of the same length.
+Evaluate the Hamming distance between vectors `s1` and `s2` of the same
+length. The distance is defined as the number of component-wise differences
+in `s1` and `s2`.
 """
 function HammingD(s1::Array, s2::Array)
-    # assert(legnth(s1) == length(s2))
-    count::Int64 = 0
-    for i in 1:length(s1)
-        if s1[i] != s2[i]
-            count += 1
-        end
-    end
-    return count
-    # return - s1 .* s2 + length(s1)
+    length(s1) == length(s2) &&
+        error("Cannot evaluate Hamming distance - vectors lengths don't match ($(length(s1)), $(length(s2)))")
+
+    return sum(sign.(abs.(s1 - s2)))
 end
 
 """
@@ -541,7 +529,6 @@ function get_random_hybrid(Nvert::Int, (vmin, vmax), p=0.5)
     # representation with the continuous component uniformly distributed
     # in the (vmin, vmax) interval
     #
-
     return realign_2((get_random_configuration(Nvert, p),
         get_random_cube(Nvert, (vmin, vmax))))
 end
@@ -577,7 +564,6 @@ cube centered at the origin with side length given by `side`.
 function get_random_cube(Nvert::Int, side)::FVector
     return side .* (rand(Float64, Nvert) .- 0.5)
 end
-
 
 function randnode(nvert)
     # Returns a random number in [1, nvert]
@@ -641,7 +627,6 @@ function majority_flip!(graph ::SimpleWeightedGraph, conf::SpinConf, node)
     end
     return flip_flag
 end
-
 
 function majority_twoflip!(graph::SimpleGraph, conf::SpinConf, cut_edge)
     # Flips a cut pair if the edges adjacent to the cut edge
@@ -903,9 +888,8 @@ function step_rate_hybrid_pinned(graph::SimpleWeightedGraph, coupling::Function,
             continue
         end
         
-        xnode = x[node]
         for neib in neighbors(graph, node)
-            out[node] += s[neib] * coupling(xnode, x[neib]) *
+            out[node] += s[neib] * coupling(x[node], x[neib]) *
                          graph.weights[node, neib]
         end
     end
@@ -1065,6 +1049,8 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
     for _ = 1:(tmax-1)
         DX = step_rate_hybrid_pinned(graph, mtd, S, X, pin_pos) .* scale
         update_hybrid!(S, X, DX)
+        # This code is kept here to remind that the pinned version of
+        # step_rate explicitly keeps the updates of pinned nodes at 0
         # for pin in pinned
         #     S[pin[1]] = pin[2]
         #     X[pin[1]] = 0.0
@@ -1081,33 +1067,38 @@ function propagate_pinned(model::Model, tmax::Int, start::Hybrid,
         model.coupling, start, pinned)
 end
 
+"""
+    trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                             mtd::Function, start::Hybrid,
+                             pinned::Vector{Tuple{Int64, Int8}}) ::Vector{Hybrid}
+
+Advance the network set on `graph` governed by the dynamical kernel `mtd`
+in the initial relaxed spin state `start` for `tmax` steps each of duration
+`scale` with spins listed in `pinned` fixed. Store all intermediates states
+of the relaxed spin vector at all instances, including the initial state, and
+return the accumulated array of relaxed spin states.
+"""
 function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
                              mtd::Function, start::Hybrid,
-                             pinned::Vector{Tuple{Int64, Int8}})
-    # Advances the model in the initial state (Sstart, Xstart)
-    # for tmax time steps
-    # Keeps the full history of progression
+                             pinned::Vector{Tuple{Int64, Int8}}) ::Vector{Hybrid}
     S = start[1]
     X = start[2]
     for pin in pinned
         S[pin[1]] = pin[2]
         X[pin[1]] = 0.0
     end
-
-    SFull = start[1]
-    XFull = start[2]
+    pin_pos = [pin[1] for pin in pinned]
+    
+    sx::Vector{Hybrid} = []
+    # @show X
+    push!(sx, (copy(S), copy(X)))
 
     for _ = 1:(tmax-1)
-        DX = step_rate_hybrid(graph, mtd, S, X) .* scale
+        DX = step_rate_hybrid_pinned(graph, mtd, S, X, pin_pos) .* scale
         update_hybrid!(S, X, DX)
-        for pin in pinned
-            S[pin[1]] = pin[2]
-            X[pin[1]] = 0.0
-        end
-        XFull = [XFull X]
-        SFull = [SFull S]
+        push!(sx, (copy(S), copy(X)))
     end
-    return (SFull, XFull)
+    return sx
 end
 
 function trajectories_pinned(model::Model, tmax::Int, start::Hybrid,
@@ -1125,9 +1116,9 @@ include("dyn_anisotropy_model.jl")
 
 
 ##
-## Functions for the separated representation
+## Functions for the separated (relaxed spin) representation
 ## (mostly deprecated legacies)
-##
+## TODO: evaluate and deprecate
 
 function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     # Changes the reference point for the separated representation by `r`

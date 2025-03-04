@@ -36,6 +36,13 @@ The simplified format:
 
     Content
         u v w_{u,v}
+
+## Example of an MTX file
+% K_3 in the mtx format
+3 3
+1 2
+1 3
+2 3
 """
 function loadMTXGraph(filename::AbstractString,
     min_weight::Float64=weight_eps)::ModelGraph
