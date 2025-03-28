@@ -1,15 +1,4 @@
 # A collection of functions for simulating dynamical Ising solvers
-#
-
-# NOTE:
-# This is the version that phases out explicitly defined functions supporting
-# the separated representation of Model II:
-#     update_2!
-#     step_rate_2
-#     propagate_2
-#     trajectories_2
-#     coupling_model_2
-#     cut_2
 
 module Dice
 
@@ -23,22 +12,22 @@ using SparseArrays
 
 export Hybrid, SpinConf, Model,
     saveMTXGraph, loadMTXAdjacency, loadMTXGraph,
-    get_ER_graph,
-    get_regular_graph,
-    get_random_cube,
-    get_random_hybrid,
-    get_random_sphere,
-    get_initial,
+    get_ER_graph, get_regular_graph,
+    get_random_cube, get_random_sphere,
     get_random_configuration,
+    get_random_hybrid,
     sine, triangular,
-    cut, get_best_cut, get_best_configuration, extract_configuration,
+    cut,
+    get_best_cut, get_best_configuration,
+    extract_configuration,
     #    H_Ising, energy,
     number_to_conf,
-    propagate, roundup,
-    test_branch, scan_for_best_configuration,
+    propagate, trajectories, propagate_pinned, trajectories_pinned,
+    roundup,
     conf_decay,
     local_search, local_twosearch,
-    local_search!, local_twosearch!
+    local_search!, local_twosearch!,
+    test_branch, scan_for_best_configuration
 
 # (reserved for future implementations)
 "Define the default level of logging verbosity"
@@ -58,7 +47,7 @@ const FVector = Vector{Float64}
 const SpinConf = Vector{Int8}
 const Hybrid = Tuple{SpinConf,FVector}
 
-# To specify the general kind of model
+# To specify the general kind of model (performance concerns?)
 const ModelGraph = Union{SimpleGraph,SimpleWeightedGraph}
 
 const graph_types = Set([:binary, :weighted])
@@ -232,7 +221,7 @@ continuous (ξ) representation with rounding center at `r`.
 # Output
     Array{Float64}(length(x)) with ξ = σ + X + r
 """
-function hybrid_to_cont(hybrid::Hybrid, r::Float64 = 0.0)::Array{Float64}
+function hybrid_to_cont(hybrid::Hybrid, r::Float64=0.0)::Array{Float64}
     return hybrid[2] .+ hybrid[1] .+ r
 end
 
@@ -257,14 +246,20 @@ function hybrid_to_cont(hybrid::Hybrid, k::Vector{Int})::Vector{Float64}
     return hybrid[2] .+ hybrid[1] .+ 4 .* k
 end
 
-function hybrid_to_cont_series(hybrid_series::Vector{Hybrid}) ::Vector{Vector{Float64}}
+"""
+    hybrid_to_cont_series(hybrid_series::Vector{Hybrid}) ::Vector{FVector}
+
+Convert
+"""
+function hybrid_to_cont_series(hybrid_series::Vector{Hybrid})::Vector{FVector}
+    # ξ = σ + X + k (node dependent)
     k_vec = zeros(Int, length(hybrid_series[1][1]))
-    xi_series::Vector{Vector{Float64}} = []
+    xi_series::Vector{FVector} = []
     push!(xi_series, hybrid_to_cont(hybrid_series[1], k_vec))
 
     for i in 2:length(hybrid_series)
         cur = hybrid_series[i]
-        prev = hybrid_series[i - 1]
+        prev = hybrid_series[i-1]
         flips = findall(x -> x != 0, cur[1] - prev[1])
         for ind in flips
             if cur[2][ind] > prev[2][ind] && cur[1][ind] > prev[1][ind]
@@ -295,7 +290,7 @@ OUTPUT:
            sigmas - Int8 arrays of binary spins (-1, +1)
            xs - Float64 array of displacements [-1, 1)
 """
-function cont_to_hybrid(Vinp::Vector{Float64}, r::Float64 = 0.0)::Hybrid
+function cont_to_hybrid(Vinp::Vector{Float64}, r::Float64=0.0)::Hybrid
     V = mod.(Vinp .- r .+ 2, 4) .- 2
     sigmas = zeros(Int8, size(V))
     xs = zeros(Float64, size(V))
@@ -355,18 +350,19 @@ include("statistical_methods.jl")
 """
     cut_binary(graph::SimpleGraph, conf::SpinConf)::Int
 
-Evaluate the cut value for the given {0, 1}-weighted graph and binary configuration
+Evaluate the integer cut value for the given {0, 1}-weighted graph and binary
+configuration
 
 # Arguments
     graph - Graphs object
     conf - binary configuration array {-1,1}^N
 OUTPUT:
-    Sum_e   (1 - e1. e.2)/2
+    return integer Σ_e (1 - e1. e.2)/2
 """
 function cut_binary(graph::SimpleGraph, conf::SpinConf)::Int
     if nv(graph) != length(conf)
         println("ERROR: The configuration size $(length(conf)) and the graph size $(nv(graph)) do not match")
-    end # side note: turned out to be useful
+    end # NOTE: turned out to be useful
 
     out::Int = 0
     for edge in edges(graph)
@@ -387,7 +383,7 @@ Evaluate the cut value for the given weighted `graph` and binary configuration `
     graph - Graphs object
     conf - binary configuration array {-1,1}^N
 OUTPUT:
-    Sum_e   w(e)(1 - e.1 e.2)/2
+    return float Σ_e w(e)(1 - e.1 e.2)/2
 """
 function cut_weighted(graph::SimpleWeightedGraph,
     conf::SpinConf)::Float64
@@ -427,6 +423,10 @@ end
 
 function cut(graph::ModelGraph, state::Hybrid)
     return cut(graph, state[1])
+end
+
+function cut(model::Model, state::Hybrid)
+    return cut(model.graph, state[1])
 end
 
 function get_random_cut(graph, V, trials=10)
@@ -605,7 +605,7 @@ For `graph` in state `conf`, compare the weights of cut and uncut edges
 incident to `node`. If the weight of uncut edges is smaller, flip the
 `node`'s spin. Return `true` if the spin was flipped.
 """
-function majority_flip!(graph ::SimpleGraph, conf::SpinConf, node)
+function majority_flip!(graph::SimpleGraph, conf::SpinConf, node)
     # Flips conf[node] to be of the opposite sign to the majority of its neighbors
 
     flip_flag = false
@@ -620,7 +620,7 @@ function majority_flip!(graph ::SimpleGraph, conf::SpinConf, node)
     return flip_flag
 end
 
-function majority_flip!(graph ::SimpleWeightedGraph, conf::SpinConf, node)
+function majority_flip!(graph::SimpleWeightedGraph, conf::SpinConf, node)
     # Flips conf[node] to be of the opposite sign to the majority of its neighbors
 
     flip_flag = false
@@ -894,7 +894,7 @@ function step_rate_hybrid_pinned(graph::SimpleWeightedGraph, coupling::Function,
         if node in pinned
             continue
         end
-        
+
         for neib in neighbors(graph, node)
             out[node] += s[neib] * coupling(x[node], x[neib]) *
                          graph.weights[node, neib]
@@ -929,38 +929,22 @@ function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
     return VFull
 end
 
-function trajectories(model::Model, duration, Vini)
-    # Advances the graph `(duration - 1)` steps forward
-    # This is the verbose version, which returns the full dynamics
-    #
-    # model - the model description
-    # duration - how many time points to evaluate
-    # V0 - the initial conditions
-    #
-    # OUTPUT:    #   VFull = [V(0) V(1) ... V(duration-1)]
-
-    return trajectories(model.graph, duration, model.scale,
-        model.coupling, Vini)
-end
-
 function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
-    mtd::Function, start::Hybrid)
+    mtd::Function, start::Hybrid)::Vector{Hybrid}
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps
     # Keeps the full history of progression
     S = start[1]
     X = start[2]
 
-    SFull = start[1]
-    XFull = start[2]
+    state_full::Vector{Hybrid} = []
 
     for _ = 1:(tmax-1)
         DX = step_rate_hybrid(graph, mtd, S, X) .* scale
         update_hybrid!(S, X, DX)
-        XFull = [XFull X]
-        SFull = [SFull S]
+        push!(state_full, (copy(S), copy(X)))
     end
-    return (SFull, XFull)
+    return state_full
 end
 
 function trajectories(model::Model, tmax::Int, start::Hybrid)
@@ -1027,7 +1011,7 @@ end
 
 ###############################################################
 ##
-## (TEMP) Methods propagating the system with pinned spins 
+## (TEMP) Methods propagating the system with pinned spins
 ##
 ###############################################################
 
@@ -1041,8 +1025,8 @@ in the initial state `start` for `tmax` steps each of duration `scale` with
 spins listed in `pinned` fixed.
 """
 function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
-                          mtd::Function, start::Hybrid,
-                          pinned::Vector{Tuple{Int64, Int8}})::Hybrid
+    mtd::Function, start::Hybrid,
+    pinned::Vector{Tuple{Int64,Int8}})::Hybrid
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps with pinned spins in pinned
     S = start[1]
@@ -1067,7 +1051,7 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
 end
 
 function propagate_pinned(model::Model, tmax::Int, start::Hybrid,
-                          pinned::Vector{Tuple{Int64, Int8}})::Hybrid
+    pinned::Vector{Tuple{Int64,Int8}})::Hybrid
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps with pinned spins in pinned
     return propagate_pinned(model.graph, tmax, model.scale,
@@ -1086,8 +1070,8 @@ of the relaxed spin vector at all instances, including the initial state, and
 return the accumulated array of relaxed spin states.
 """
 function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
-                             mtd::Function, start::Hybrid,
-                             pinned::Vector{Tuple{Int64, Int8}}) ::Vector{Hybrid}
+    mtd::Function, start::Hybrid,
+    pinned::Vector{Tuple{Int64,Int8}})::Vector{Hybrid}
     S = start[1]
     X = start[2]
     for pin in pinned
@@ -1095,7 +1079,7 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
         X[pin[1]] = 0.0
     end
     pin_pos = [pin[1] for pin in pinned]
-    
+
     sx::Vector{Hybrid} = []
     # @show X
     push!(sx, (copy(S), copy(X)))
@@ -1109,7 +1093,7 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
 end
 
 function trajectories_pinned(model::Model, tmax::Int, start::Hybrid,
-                             pinned::Vector{Tuple{Int64, Int8}})
+    pinned::Vector{Tuple{Int64,Int8}})
     return trajectories_pinned(model.graph, tmax, model.scale,
         model.coupling, start, pinned)
 end

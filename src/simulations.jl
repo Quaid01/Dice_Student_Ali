@@ -92,7 +92,7 @@ function scan_for_best_configuration(model::Model, Vc::Array,
     Nvert = nv(G)
     for _ = 1:Ninitial
 #        local cucu::Integer
-        Vi = domain .* get_initial(Nvert, (-1, 1))
+        Vi = domain .* get_random_cube(Nvert, (-1, 1))
         Vi .+= Vc;
         Vi[rand((1:Nvert))] *= -1.1  # flip a random node as a perturbation
         # Vi .-= sum(Vi)/Nvert

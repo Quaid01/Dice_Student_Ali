@@ -2,12 +2,20 @@
 #+AUTHOR: Mikhail Erementchouk
 #+EMAIL: merement@gmail.com
 #+DATE: <2021-08-29 Sun>
-#+OPTIONS: tex: t LaTeX: t toc:nil ^:{}
+#+OPTIONS: tex: t LaTeX: t toc:1 ^:{}
 #+DESCRIPTION:
 
 * Dice
 
-=Dice= is an implemented in Julia research dynamic Ising solver based on nonlinear relaxations.
+Julia's implementation of a research dynamic Ising solver based on nonlinear relaxations.
+
+* Installation
+
+WIP
+
+* Usage
+
+WIP
 
 * Content
 
