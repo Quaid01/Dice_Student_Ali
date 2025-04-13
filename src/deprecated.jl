@@ -25,6 +25,32 @@ function realign_2(conf::Hybrid, r::Float64 = 0.0)
     return Dice.cont_to_hybrid(V, r)
 end
 
+function update_2!(spins::SpinConf, xs::FVector, dx::FVector)
+    # Tracing version
+    # Update the continuous component (xs) by dx using the wrapping rule
+    # The spin part is assumed to be Int8-array
+    # Return the number of flips (tracing)
+    # NOTE: deprecated in favor of "hybrid" methods
+    Nvert = length(spins)
+    count = 0
+    for i in 1:Nvert
+        # we presume that |dx[i]| < 2
+        Xnew = xs[i] + dx[i]
+        if Xnew > 1
+            xs[i] = Xnew - 2
+            spins[i] *= -1
+            count += 1
+        elseif Xnew < -1
+            xs[i] = Xnew + 2
+            spins[i] *= -1
+            count += 1
+        else
+            xs[i] = Xnew
+        end
+    end
+    return count
+end
+
 function propagate_2(model::Model, tmax, Sstart::SpinConf, Xstart::FVector)
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps

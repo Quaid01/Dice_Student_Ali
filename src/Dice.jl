@@ -524,13 +524,39 @@ function get_initial(Nvert::Int, (vmin, vmax))
 end
 
 
-function get_random_hybrid(Nvert::Int, (vmin, vmax), p=0.5)
-    # Generate random configuration of length `Nvert` in the separated
-    # representation with the continuous component uniformly distributed
-    # in the (vmin, vmax) interval
-    #
-    return realign_2((get_random_configuration(Nvert, p),
-        get_random_cube(Nvert, (vmin, vmax))))
+"""
+    get_random_hybrid(Nvert::Int, (vmin, vmax)::Tuple{Float64, Float64}, p=0.5) ::Hybrid
+
+Generate random hybrid configuration of length `Nvert` with the
+continuous component uniformly distributed in the interval `(vmin, vmax)`
+(the uniform distribution in the cube ``[vmin, vmax]^N``) and the discrete
+component being a Bernoulli process with parameter `p` (the default value
+`p = 0.5` means the uniform distribution in ``{-1, 1}^N``).
+"""
+function get_random_hybrid(Nvert::Int,
+                           (vmin, vmax)::Tuple{Float64, Float64},
+                           p=0.5) ::Hybrid
+    vsize = vmax - vmin
+    offset = (vmax + vmin)/2
+    return (get_random_configuration(Nvert, p),
+            get_random_cube(Nvert, size) .+ offset)
+end
+
+"""
+    get_random_hybrid(Nvert::Int, vsize::Float64, p=0.5) ::Hybrid
+
+Generate random hybrid configuration of length `Nvert` with the continuous
+components uniformly distributed in the interval `(-size/2, size/2)` as in
+`get_random_cube`(@ref) (the uniform distribution in the cube ``[vmin,
+vmax]^N``) and the discrete component being a Bernoulli process with
+parameter `p` (the default value `p = 0.5` means the uniform distribution
+in ``{-1, 1}^N``).
+
+See also [`get_random_cube`](@ref)
+"""
+function get_random_hybrid(Nvert::Int, vsize::Float64, p=0.5) ::Hybrid
+    return (get_random_configuration(Nvert, p),
+            get_random_cube(Nvert, vsize))
 end
 
 """
@@ -553,7 +579,7 @@ function get_random_sphere(Nvert::Int, radius)
 end
 
 """
-    get_random_cube(Nvert::Int, side)
+    get_random_cube(Nvert::Int, side::Float64) ::FVector
 
 Return vector with `Nvert` random points uniformly distributed insde the
 cube centered at the origin with side length given by `side`.
@@ -561,7 +587,7 @@ cube centered at the origin with side length given by `side`.
 # Output
     Array{Float64}[1:Nvert] ∈ [-side/2, side/2]^Nvert
 """
-function get_random_cube(Nvert::Int, side)::FVector
+function get_random_cube(Nvert::Int, side::Float64)::FVector
     return side .* (rand(Float64, Nvert) .- 0.5)
 end
 
@@ -1027,11 +1053,10 @@ spins listed in `pinned` fixed.
 function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
     mtd::Function, start::Hybrid,
     pinned::Vector{Tuple{Int64,Int8}})::Hybrid
-    # Advances the model in the initial state (Sstart, Xstart)
-    # for tmax time steps with pinned spins in pinned
+
     S = start[1]
     X = start[2]
-    # ensure that pins are set correctly for the interface unifomity
+    # ensure that pins are set correctly for the interface uniformity
     for pin in pinned
         S[pin[1]] = pin[2]
         X[pin[1]] = 0.0
@@ -1041,7 +1066,7 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
         DX = step_rate_hybrid_pinned(graph, mtd, S, X, pin_pos) .* scale
         update_hybrid!(S, X, DX)
         # This code is kept here to remind that the pinned version of
-        # step_rate explicitly keeps the updates of pinned nodes at 0
+        # step_rate explicitly avoids updating pinned nodes
         # for pin in pinned
         #     S[pin[1]] = pin[2]
         #     X[pin[1]] = 0.0
@@ -1081,7 +1106,6 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
     pin_pos = [pin[1] for pin in pinned]
 
     sx::Vector{Hybrid} = []
-    # @show X
     push!(sx, (copy(S), copy(X)))
 
     for _ = 1:(tmax-1)
@@ -1108,8 +1132,6 @@ include("dyn_anisotropy_model.jl")
 
 ##
 ## Functions for the separated (relaxed spin) representation
-## (mostly deprecated legacies)
-## TODO: evaluate and deprecate
 
 function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     # Changes the reference point for the separated representation by `r`
@@ -1119,32 +1141,6 @@ function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     V = Dice.hybrid_to_cont(conf[1], conf[2])
     return Dice.cont_to_hybrid(V, r)
 end
-
-function update_2!(spins::SpinConf, xs::FVector, dx::FVector)
-    # Tracing version
-    # Update the continuous component (xs) by dx using the wrapping rule
-    # The spin part is assumed to be Int8-array
-    # Return the number of flips (tracing)
-    Nvert = length(spins)
-    count = 0
-    for i in 1:Nvert
-        # we presume that |dx[i]| < 2
-        Xnew = xs[i] + dx[i]
-        if Xnew > 1
-            xs[i] = Xnew - 2
-            spins[i] *= -1
-            count += 1
-        elseif Xnew < -1
-            xs[i] = Xnew + 2
-            spins[i] *= -1
-            count += 1
-        else
-            xs[i] = Xnew
-        end
-    end
-    return count
-end
-
 
 ############################################################
 #
