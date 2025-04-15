@@ -79,23 +79,22 @@ mutable struct Model
 
     coupling::Function   # dynamical coupling function
     scale::Float64       # Defines the magnitude of the timestep
-    # default = 1/max_degree(graph)
 
     Ks::Float64          # The magnitude of the anisotropy term
     # default = 0
     anisotropy::Function # anisotropy function
     # default = coupling(x, -x)
 
-    Ns::Float64          # The magnitude of the noise term
-    # default = 0
-    noise::Function      # noise function
-    # default = noiseUniform
+    "The magnitude of the noise term"
+    Ns::Float64
+    "The implementation of the noise function"
+    noise::Function       # default = noiseUniform
 
-    extended::Bool       # obsolete, phase out (inside kind)
+    # extended::Bool      # obsolete, phase out (inside kind)
     # Whether there is an extension (dynamical
     # anisotropy)
-    silence::Int         # the inverse level of verbosity
-    # default = silence_default
+    "the inverse level of verbosity"
+    silence::Int           # default = silence_default
 
     Model() = new(ModelKind())
     Model(x::ModelKind) = new(x)
@@ -104,28 +103,23 @@ end
 # Explicit constructors
 Model(graph::ModelGraph, coupling::Function) =
     begin
-        M =
-            begin
-                if graph isa SimpleWeightedGraph
-                    Model(ModelKind(:weighted))
-                else
-                    Model(ModelKind(:binary))
-                end
-            end
+        M = graph isa SimpleWeightedGraph ?
+            Model(ModelKind(:weighted)) :
+            Model(ModelKind(:binary))
 
         M = Model()
         M.graph = graph
         M.scale = 1 / Graphs.Δ(graph)
         M.coupling = coupling
-        #        M.method = M.coupling
+        # M.method = M.coupling
         # temporary placeholder
-        #        M.energy = M.coupling
+        # M.energy = M.coupling
         # The default interpretation of anisotropy
-        #=         M.anisotropy = x -> M.coupling(x, -x)
-                M.Ks = 0
-                M.extended = false
-                M.Ns = 0
-                M.noise = Dice.noiseUniform =#
+        # M.anisotropy = x -> M.coupling(x, -x)
+        # M.Ks = 0
+        # M.extended = false
+        # M.Ns = 0
+        # M.noise = Dice.noiseUniform 
         M.silence = silence_default
         return M
     end
@@ -174,21 +168,6 @@ function debug_msg(out)
     end
 end
 
-############################################################
-#
-### File support
-#
-############################################################
-
-include("file_operations.jl")
-
-############################################################
-#
-### A library of coupling functions (TODO: detach?)
-#
-############################################################
-
-include("dynamical_kernels.jl")
 
 ############################################################
 #
@@ -197,11 +176,11 @@ include("dynamical_kernels.jl")
 ############################################################
 
 """
-    roundup(V::Array{Float64})
+    roundup(V ::Vector{Float64}) ::Vector{Float64}
 
 Return `V` folded into [-2, 2].
 """
-function roundup(V::Array{Float64})
+function roundup(V ::Vector{Float64}) ::Vector{Float64}
     return mod.(V .+ 2, 4) .- 2
 end
 
@@ -429,40 +408,7 @@ function cut(model::Model, state::Hybrid)
     return cut(model.graph, state[1])
 end
 
-function get_random_cut(graph, V, trials=10)
-    (becu, _, _) = get_random_rounding(graph, V, trials)
-    return becu
-end
 
-function get_rate(VFull)
-    # Evaluates the magnitude of variations (discrete time derivative)
-    # in a 2D array VFull[time, N].
-    # Returns a 1D array of magnitudes with the last element duplicated
-    # to keep the same size as the number of time points in VFull
-
-    out = [sum((VFull[:, i+1] - VFull[:, i]) .^ 2) for i in 1:(size(VFull)[2]-1)]
-    return sqrt.([out; out[end]])
-end
-
-# Some Model II specific functions
-
-function cut_2(model, s::SpinConf, x::FVector)
-    # This should be some kind of energy function for Model II
-    # Evaluages the cut function for Model II:
-    # C_2(sigma, X) = C(sigma) + \Delta C_2(sigma, X)
-    # where C(\sigma) is the cut given by the binary component
-    # and \Delta C_2 = \sum_{m,n} A_{m,n} s_m s_n |x_m - x_n|/2
-    phix = 0
-    graph = model.graph
-    for edge in edges(graph)
-        phix += s[edge.src] * s[edge.dst] * abs(x[edge.src] - x[edge.dst]) / 2
-    end
-    return Dice.cut(graph, s) + phix
-end
-
-function cut_2(model, distr::Hybrid)
-    return cut_2(model, distr[1], distr[2])
-end
 
 
 ############################################
@@ -825,18 +771,13 @@ end
 
 function get_regular_graph(Nvert, degree)::SimpleGraph
     # Generate a random connected `degree'-regular graph with `Nvert` vertices
-
     while true
         G = random_regular_graph(Nvert, degree)
         is_connected(G) && return G
     end
 end
 
-##########################################################
-#
 ###   Dynamics methods
-#
-##########################################################
 
 function step_rate(graph::SimpleGraph, method::Function,
     V::FVector)::FVector
@@ -888,8 +829,10 @@ function update_hybrid!(spins::SpinConf, xs::FVector, dx::FVector)
     end
 end
 
-function step_rate_hybrid(graph::SimpleGraph, coupling::Function,
-    s::SpinConf, x::FVector)::FVector
+function step_rate_hybrid(graph::SimpleGraph,
+                          coupling::Function,
+                          s::SpinConf,
+                          x::FVector)::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
@@ -901,8 +844,10 @@ function step_rate_hybrid(graph::SimpleGraph, coupling::Function,
     return out
 end
 
-function step_rate_hybrid(graph::SimpleWeightedGraph, coupling::Function,
-    s::SpinConf, x::FVector)::FVector
+function step_rate_hybrid(graph::SimpleWeightedGraph,
+                          coupling::Function,
+                          s::SpinConf,
+                          x::FVector)::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         xnode = x[node]
@@ -915,8 +860,11 @@ function step_rate_hybrid(graph::SimpleWeightedGraph, coupling::Function,
     return out
 end
 
-function step_rate_hybrid_pinned(graph::SimpleWeightedGraph, coupling::Function,
-    s::SpinConf, x::FVector, pinned::Vector{Int64})::FVector
+function step_rate_hybrid_pinned(graph::SimpleWeightedGraph,
+                                 coupling::Function,
+                                 s::SpinConf,
+                                 x::FVector,
+                                 pinned::Vector{Int64})::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
         if node in pinned
@@ -934,7 +882,7 @@ end
 
 
 function trajectories(graph::ModelGraph, tmax::Int, scale::Float64,
-    method::Function, Vini)
+    method::Function, Vini ::Vector{Float64}) ::Vector{Vector{Float64}}
     # Advances the graph duration - 1 steps forward
     # This is the verbose version, which returns the full dynamics
     #
@@ -1037,11 +985,7 @@ function propagate(model::Model, tmax::Int, start::Hybrid)::Hybrid
         model.coupling, start)
 end
 
-###############################################################
-##
 ### (TEMP) Methods propagating the system with pinned spins
-##
-###############################################################
 
 """
     propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
@@ -1143,8 +1087,54 @@ end
 
 include("simulations.jl")
 
+### File support
+
+include("file_operations.jl")
+
+### A library of coupling functions
+
+include("dynamical_kernels.jl")
+
 ### Assorted deprecated methods
 
 include("deprecated.jl")
+
+### Candidates to deprecate
+
+function get_random_cut(graph, V, trials=10)
+    (becu, _, _) = get_random_rounding(graph, V, trials)
+    return becu
+end
+
+function get_rate(VFull)
+    # Evaluates the magnitude of variations (discrete time derivative)
+    # in a 2D array VFull[time, N].
+    # Returns a 1D array of magnitudes with the last element duplicated
+    # to keep the same size as the number of time points in VFull
+
+    out = [sum((VFull[:, i+1] - VFull[:, i]) .^ 2) for i in 1:(size(VFull)[2]-1)]
+    return sqrt.([out; out[end]])
+end
+
+# Some Model II specific functions
+
+function cut_2(model, s::SpinConf, x::FVector)
+    # This should be some kind of energy function for Model II
+    # Evaluages the cut function for Model II:
+    # C_2(sigma, X) = C(sigma) + \Delta C_2(sigma, X)
+    # where C(\sigma) is the cut given by the binary component
+    # and \Delta C_2 = \sum_{m,n} A_{m,n} s_m s_n |x_m - x_n|/2
+    phix = 0
+    graph = model.graph
+    for edge in edges(graph)
+        phix += s[edge.src] * s[edge.dst] * abs(x[edge.src] - x[edge.dst]) / 2
+    end
+    return Dice.cut(graph, s) + phix
+end
+
+function cut_2(model, distr::Hybrid)
+    return cut_2(model, distr[1], distr[2])
+end
+
 
 end # end of module Dice
