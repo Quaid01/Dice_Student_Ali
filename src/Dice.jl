@@ -554,13 +554,15 @@ in ``{-1, 1}^N``).
 
 See also [`get_random_cube`](@ref)
 """
-function get_random_hybrid(Nvert::Int, vsize::Float64, p=0.5) ::Hybrid
+function get_random_hybrid(Nvert ::Int,
+                           vsize ::Float64,
+                           p ::Float64 = 0.5) ::Hybrid
     return (get_random_configuration(Nvert, p),
             get_random_cube(Nvert, vsize))
 end
 
 """
-    get_random_sphere(Nvert::Int, radius)
+    get_random_sphere(Nvert::Int, radius ::Float64) ::FVector
 
 Return vector with `Nvert` random points uniformly distributed over the
 sphere of given `radius`.
@@ -572,7 +574,7 @@ sphere of given `radius`.
 OUTPUT:
     Array{Float64}[1:Nvert] - points on sphere
 """
-function get_random_sphere(Nvert::Int, radius)
+function get_random_sphere(Nvert::Int, radius ::Float64) ::FVector
     X = randn(Nvert)
     X ./= sqrt.(X' * X)
     return X .* radius
@@ -585,7 +587,7 @@ Return vector with `Nvert` random points uniformly distributed insde the
 cube centered at the origin with side length given by `side`.
 
 # Output
-    Array{Float64}[1:Nvert] ∈ [-side/2, side/2]^Nvert
+    Vector{Float64}[1:Nvert] ∈ [-side/2, side/2]^Nvert
 """
 function get_random_cube(Nvert::Int, side::Float64)::FVector
     return side .* (rand(Float64, Nvert) .- 0.5)
@@ -838,8 +840,8 @@ end
 
 function step_rate(graph::SimpleGraph, method::Function,
     V::FVector)::FVector
-    # Evaluate ΔV (continuous representation) in a single step
-    # Deals with {0,1}-weighted graphs, isotropic, noiseless
+    # Evaluate Δξ (ontinuous representation) for a single step
+    # NOTE: for {0,1}-weighted graphs, isotropic, noiseless
     out = zeros(Float64, size(V))
     for node in vertices(graph)
         Vnode = V[node]
@@ -852,8 +854,8 @@ end
 
 function step_rate(graph::SimpleWeightedGraph, method::Function,
     V::FVector)::FVector
-    # Evaluate ΔV (continuous representation) in a single step
-    # Deals with weighted graphs, isotropic, noiseless
+    # Evaluate Δξ (continuous representation) for a single step
+    # NOTE: for {0,1}-weighted graphs, isotropic, noiseless
     out = zeros(Float64, size(V))
     for node in vertices(graph)
         Vnode = V[node]
@@ -1037,7 +1039,7 @@ end
 
 ###############################################################
 ##
-## (TEMP) Methods propagating the system with pinned spins
+### (TEMP) Methods propagating the system with pinned spins
 ##
 ###############################################################
 
@@ -1076,7 +1078,7 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
 end
 
 function propagate_pinned(model::Model, tmax::Int, start::Hybrid,
-    pinned::Vector{Tuple{Int64,Int8}})::Hybrid
+                          pinned::Vector{Tuple{Int64,Int8}})::Hybrid
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps with pinned spins in pinned
     return propagate_pinned(model.graph, tmax, model.scale,
@@ -1095,8 +1097,8 @@ of the relaxed spin vector at all instances, including the initial state, and
 return the accumulated array of relaxed spin states.
 """
 function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
-    mtd::Function, start::Hybrid,
-    pinned::Vector{Tuple{Int64,Int8}})::Vector{Hybrid}
+                             mtd::Function, start::Hybrid,
+                             pinned::Vector{Tuple{Int64,Int8}})::Vector{Hybrid}
     S = start[1]
     X = start[2]
     for pin in pinned
@@ -1117,21 +1119,16 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
 end
 
 function trajectories_pinned(model::Model, tmax::Int, start::Hybrid,
-    pinned::Vector{Tuple{Int64,Int8}})
+                             pinned::Vector{Tuple{Int64,Int8}})
     return trajectories_pinned(model.graph, tmax, model.scale,
-        model.coupling, start, pinned)
+                               model.coupling, start, pinned)
 end
 
-########################################################
-##
 ###   Extended methods treating anisotropy dynamically
-##
-########################################################
+
 include("dyn_anisotropy_model.jl")
 
-
-##
-## Functions for the separated (relaxed spin) representation
+### Functions for the separated (relaxed spin) representation
 
 function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     # Changes the reference point for the separated representation by `r`
@@ -1142,18 +1139,12 @@ function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     return Dice.cont_to_hybrid(V, r)
 end
 
-############################################################
-#
 ### Simulation
-#
-############################################################
+
 include("simulations.jl")
 
-############################################################
-#
 ### Assorted deprecated methods
-#
-############################################################
+
 include("deprecated.jl")
 
 end # end of module Dice
