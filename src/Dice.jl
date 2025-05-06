@@ -10,24 +10,43 @@ using Random
 using SimpleWeightedGraphs
 using SparseArrays
 
-export Hybrid, SpinConf, Model,
-    saveMTXGraph, loadMTXAdjacency, loadMTXGraph,
-    get_ER_graph, get_regular_graph,
-    get_random_cube, get_random_sphere,
+export
+    # Main types
+    Hybrid,
+    SpinConf,
+    Model,
+    # File operrations
+    saveMTXGraph,
+    loadMTXAdjacency,
+    loadMTXGraph,
+    # Generating graphs
+    get_ER_graph,
+    get_regular_graph,
+    # Generating random states
+    get_random_cube,
+    get_random_sphere,
     get_random_configuration,
     get_random_hybrid,
-    sine, triangular,
+    # Cut and rounding
     cut,
-    get_best_cut, get_best_configuration,
+    get_best_cut,
+    get_best_configuration,
     extract_configuration,
-    #    H_Ising, energy,
-    number_to_conf,
-    propagate, trajectories, propagate_pinned, trajectories_pinned,
     roundup,
-    conf_decay,
-    local_search, local_twosearch,
-    local_search!, local_twosearch!,
-    test_branch, scan_for_best_configuration
+    number_to_conf,
+    # Progression methods
+    propagate,
+    trajectories,
+    propagate_pinned,
+    trajectories_pinned,
+    # local search
+    local_search,
+    local_search!,
+    local_twosearch,
+    local_twosearch!
+
+# specialized search methods like test_branch
+# are not exported but are available in simulations.jl
 
 # (reserved for future implementations)
 "Define the default level of logging verbosity"
@@ -64,41 +83,33 @@ struct ModelKind
     end
 
     function ModelKind(graph_t::Symbol)
-        graph_t in graph_types || throw(ArgumentError("Invalid graph type: $graph_t"))
+        graph_t in graph_types ||
+            throw(ArgumentError("Invalid graph type: $graph_t"))
         new(graph_t, :isotropic, :noiseless)
     end
 end
 
-# For a compact description of simulation scenarios and controlling the
-# module behavior
+"The data type defining the model (the structure of governing equations)"
 mutable struct Model
-    # TODO: figure out the constness
-    kind::ModelKind
+    kind     ::ModelKind
 
-    graph::ModelGraph
+    graph    ::ModelGraph
 
-    coupling::Function   # dynamical coupling function
-    scale::Float64       # Defines the magnitude of the timestep
+    "Dynamical coupling function"
+    coupling ::Function
+    "The magnitude of the timestep"
+    scale    ::Float64
 
-    Ks::Float64          # The magnitude of the anisotropy term
-    # default = 0
-    anisotropy::Function # anisotropy function
-    # default = coupling(x, -x)
-
-    "The magnitude of the noise term"
-    Ns::Float64
-    "The implementation of the noise function"
-    noise::Function       # default = noiseUniform
-
-    # extended::Bool      # obsolete, phase out (inside kind)
-    # Whether there is an extension (dynamical
-    # anisotropy)
     "the inverse level of verbosity"
     silence::Int           # default = silence_default
 
     Model() = new(ModelKind())
     Model(x::ModelKind) = new(x)
 end
+# "The magnitude of the noise term"
+# Ns::Float64
+# "The implementation of the noise function"
+# noise::Function       # default = noiseUniform
 
 # Explicit constructors
 Model(graph::ModelGraph, coupling::Function) =
@@ -111,15 +122,7 @@ Model(graph::ModelGraph, coupling::Function) =
         M.graph = graph
         M.scale = 1 / Graphs.Δ(graph)
         M.coupling = coupling
-        # M.method = M.coupling
-        # temporary placeholder
-        # M.energy = M.coupling
-        # The default interpretation of anisotropy
-        # M.anisotropy = x -> M.coupling(x, -x)
-        # M.Ks = 0
-        # M.extended = false
-        # M.Ns = 0
-        # M.noise = Dice.noiseUniform 
+
         M.silence = silence_default
         return M
     end
@@ -128,32 +131,20 @@ Model(graph::ModelGraph, coupling::Function, scale::Float64) =
     begin
         M = Model(graph, coupling)
         M.scale = scale
-        #=         M.Ks = 0
-                M.Ns = 0
-                M.noise = Dice.noiseUniform
-                M.silence = silence_default
-                M.extended = false
-         =#
+
         return M
     end
 
 Model(graph::ModelGraph, coupling::Function, scale::Float64, Ks::Float64) =
     begin
         M = Model(graph, coupling, scale)
-        @warn "Anisotropy has no effect in the present version of Dice"
-        #=         M.Ks = Ks
-                M.Ns = 0
-                M.noise = Dice.noiseUniform
-                M.extended = true         =#
+        @error "Setting up anisotropy is an error in the present version"
+
         return M
     end
 
-############################################################
-#
 ### Internal service functions
-### TODO: replace by a proper logging functionality
-#
-############################################################
+# TODO: replace by a proper logging functionality
 
 function message(model::Model, out, importance=1)
     if importance > model.silence
@@ -169,19 +160,15 @@ function debug_msg(out)
 end
 
 
-############################################################
-#
 ### Data processing methods
-#
-############################################################
 
 """
-    roundup(V ::Vector{Float64}) ::Vector{Float64}
+    roundup(V ::Vector{Float64}, r::Float64 = 0.0) ::Vector{Float64}
 
-Return `V` folded into [-2, 2].
+Return `V` displaced by `r` folded into `[-2, 2]` interval.
 """
-function roundup(V ::Vector{Float64}) ::Vector{Float64}
-    return mod.(V .+ 2, 4) .- 2
+function roundup(V ::Vector{Float64}, r::Float64 = 0.0) ::Vector{Float64}
+    return mod.(V .+ r .+ 2, 4) .- 2
 end
 
 """
@@ -281,7 +268,6 @@ function cont_to_hybrid(Vinp::Vector{Float64}, r::Float64=0.0)::Hybrid
     return (sigmas, xs)
 end
 
-
 """
     HammingD(s1::Vector, s2::Vector)
 
@@ -312,19 +298,7 @@ function EuclidD(V1::FVector, V2::FVector)
 end
 
 
-############################################################
-#
-### Statistical methods
-#
-############################################################
-
-include("statistical_methods.jl")
-
-############################################################
-#
 ### Cut functions
-#
-############################################################
 
 """
     cut_binary(graph::SimpleGraph, conf::SpinConf)::Int
@@ -382,7 +356,7 @@ end
 """
     cut(graph::ModelGraph, conf::SpinConf)
 
-Main dispatch for evaluating cut. Depending on whether `graph`
+The main dispatch for evaluating cut. Depending on whether `graph`
 is binary or weighted, the respective cut function is called.
 
 # Arguments
@@ -609,7 +583,17 @@ function majority_flip!(graph::SimpleWeightedGraph, conf::SpinConf, node)
     return flip_flag
 end
 
-function majority_twoflip!(graph::SimpleGraph, conf::SpinConf, cut_edge)
+"""
+    majority_twoflip!(graph::SimpleGraph, conf::SpinConf, cut_edge) :Boolean
+
+For graph `graph` in the initial state `conf` inspect the edges adjacent
+to `cut_edge`, whose end points are silently assumed to belong to different
+partitions. If the cut can be improved by flipping the spins at the ends
+of `cut_edge`, flip the pair in place.
+
+Return `true`, if the flip was performed, and `false` otherwise.
+"""
+function majority_twoflip!(graph::SimpleGraph, conf::SpinConf, cut_edge) :Boolean
     # Flips a cut pair if the edges adjacent to the cut edge
     # form the wrong majority
     # Preserves the node-majority
@@ -629,7 +613,14 @@ function majority_twoflip!(graph::SimpleGraph, conf::SpinConf, cut_edge)
     return flip_flag
 end
 
-function local_search(graph::ModelGraph, conf::SpinConf)
+
+"""
+    local_search(graph::ModelGraph, conf::SpinConf) :SpinConf
+
+Perform 1-opt local search for maximum cut of (weighted) graph `graph` in
+the initial spin state `conf`. Return found 1-opt optimal configuration.
+"""
+function local_search(graph::ModelGraph, conf::SpinConf) :SpinConf
     # Eliminates vertices breaking the majority rule
     # Attention, it changes conf
     # While it's ideologically off, it is useful for functional
@@ -661,7 +652,7 @@ configurations yielding better cut within the Hamming distance one.
 
 # Output
     count - the total number of passes
-    `conf` is displaced to a locally optimal configuration
+    `conf` is changed in-place to a locally optimal configuration
 """
 function local_search!(graph::ModelGraph, conf::SpinConf)
     nonstop = true
@@ -676,7 +667,21 @@ function local_search!(graph::ModelGraph, conf::SpinConf)
     return count
 end
 
-function local_twosearch(graph::SimpleGraph, conf::SpinConf)
+
+"""
+    local_twosearch(graph::SimpleGraph, conf::SpinConf) :SpinConf
+
+Perform the second stage in the 2-opt local search of the maximum cut
+of graph `graph` in the initial spin state given in `conf`. Ensure that
+no pair of spins can be flipped with improving the cut. Return the 2-opt
+optimal configuration.
+
+NOTE: the function assumes that the first stage of the search was already
+done, so that `conf` is the outcome of [local_search]. Consequenly, the
+function checks only cut edges. For a generic initial spin configuration,
+the outcome is not necessarily 2-opt optimal.
+"""
+function local_twosearch(graph::SimpleGraph, conf::SpinConf) :SpinConf
     # Eliminates pairs breaking the edge-majority rule
     # Attention, it changes conf
     nonstop = true
@@ -769,6 +774,12 @@ function get_ER_graph(Nvert::Int, prob::Float64)::SimpleGraph
     end
 end
 
+
+"""
+    get_regular_graph(Nvert, degree)::SimpleGraph
+
+Generate connected random `degree`-regular {0, 1}-weighted graph.
+"""
 function get_regular_graph(Nvert, degree)::SimpleGraph
     # Generate a random connected `degree'-regular graph with `Nvert` vertices
     while true
@@ -1090,6 +1101,11 @@ include("simulations.jl")
 ### File support
 
 include("file_operations.jl")
+
+### Statistical methods
+
+include("statistical_methods.jl")
+
 
 ### A library of coupling functions
 

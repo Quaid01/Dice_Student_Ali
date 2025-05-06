@@ -120,7 +120,7 @@ function loadDumpedGraph(filename::AbstractString)::ModelGraph
 end
 
 """
-    dumpGraph(Graph::SimpleGraph, filename::String)
+    saveMTXGraph(Graph::SimpleGraph, filename::String)
 
 Writes the sparce adjacency matrix of `Graph` to file `filename` in the reduced
 `MatrixMarket` format.
