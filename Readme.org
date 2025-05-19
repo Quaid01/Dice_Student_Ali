@@ -11,6 +11,10 @@ Julia's implementation of a research dynamic Ising solver based on nonlinear rel
 
 * Installation
 
+The repository can be cloned to any preferred directory
+
+
+
 WIP
 
 * Usage
@@ -23,4 +27,4 @@ WIP
 
 [[file:cases/][cases]] holds particular "releases" (see the description inside) and applications
 
-The main page is https://github.com/merement/Dice.git
+The main page is [[https://github.com/merement/Dice.git]]

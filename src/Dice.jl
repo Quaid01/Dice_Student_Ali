@@ -407,7 +407,7 @@ function randspin(p=0.5)::Int8
 end
 
 """
-    get_random_configuration(len::Int, p=0.5)
+    get_random_configuration(len::Int, p=0.5) ::SpinConf
 
 Return a Bernoulli integer sequence of length `len` and parameter `p`.
 Can be used for generating random binary distributions (spin configurations).
@@ -419,11 +419,12 @@ Can be used for generating random binary distributions (spin configurations).
 OUTPUT:
     {-1, 1}^(len) - Int8-integer array of 1 and -1
 """
-function get_random_configuration(len::Int, p=0.5)::Array{Int8}
+function get_random_configuration(len::Int, p=0.5) ::SpinConf
     # A Bernoulli sequence of length len
     # Can be used for generating random binary distributions
     #    return [randspin(p) for i in 1:len]
-    out = Array{Int8}(undef, len)
+    out::SpinConf = zeros(len)
+    #out = Array{Int8}(undef, len)
     return map(x ->
             if rand() < p
                 1
@@ -615,12 +616,14 @@ end
 
 
 """
-    local_search(graph::ModelGraph, conf::SpinConf) :SpinConf
+    local_search(graph::ModelGraph, conf::SpinConf) ::SpinConf
 
-Perform 1-opt local search for maximum cut of (weighted) graph `graph` in
-the initial spin state `conf`. Return found 1-opt optimal configuration.
+Perform 1-opt local search for maximum cut of (weighted) graph `graph`
+initially in spin state `conf`. Return found 1-opt optimal configuration.
+
+NOTE: The passed initial state is changed by the functon.
 """
-function local_search(graph::ModelGraph, conf::SpinConf) :SpinConf
+function local_search(graph::ModelGraph, conf::SpinConf) ::SpinConf
     # Eliminates vertices breaking the majority rule
     # Attention, it changes conf
     # While it's ideologically off, it is useful for functional
@@ -634,6 +637,44 @@ function local_search(graph::ModelGraph, conf::SpinConf) :SpinConf
     end
     return conf
 end
+
+"""
+    local_search_pinned(graph::ModelGraph,
+                             conf::SpinConf,
+                             list_pinned ::Vector{Int}) ::SpinConf
+
+Perform 1-opt local search on graph `graph` in initial state `conf`
+while ensuring that nodes in `list_pinned` keep their initial value.
+
+NOTE: The initial state is changed by the function (except for the pinned
+spins, of course).
+"""
+function local_search_pinned(graph::ModelGraph,
+                             conf::SpinConf,
+                             list_pinned ::Vector{Int}) ::SpinConf
+    nonstop = true
+    while nonstop
+        nonstop = false
+        for node in vertices(graph)
+            node in list_pinned && continue
+            nonstop |= majority_flip!(graph, conf, node)
+        end
+    end
+    return conf
+end
+
+function local_search_pinned(graph::ModelGraph,
+                             conf::SpinConf,
+                             pinned::Vector{Tuple{Int64,Int8}}) ::SpinConf
+    pin_indices ::Vector{Int} = []
+    for pin in pinned
+        conf[pin[1]] = pin[2]
+        push!(pin_indices, pin[1])
+    end
+    return local_search_pinned(graph, conf, pin_indices)
+end
+
+
 
 """
     local_search!(graph::ModelGraph, conf)
