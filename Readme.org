@@ -51,7 +51,7 @@ Here, Dice will take the graph created and turn it into a runable model. It requ
 
 If scale is not given, then Dice will create a scale based on the number of nodes in the graph. 
 
-There are several coupling functions available, which relate the continous variable $x$ to the energy of the system. All coupling functions may be found in [[Dice_Student_Ali/src/dynamical_kernels.jl][dynamical_kernels.jl]].
+There are several coupling functions available, which relate the continous variable $x$ to the energy of the system. All coupling functions may be found in [[src/dynamical_kernels.jl][dynamical_kernels.jl]].
 
 Next one must specify the intial
 
