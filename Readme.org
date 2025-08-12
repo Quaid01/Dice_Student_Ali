@@ -9,6 +9,10 @@
 
 Julia's implementation of a research dynamic Ising solver based on nonlinear relaxations.
 
+* Usage
+
+This is a Julia package that contains all the necessary functions, packages, as well as other tools to run Ising machines using various relaxations and methods. You may find it useful to create your own code to suppliment functions found here. 
+
 * Installation
 
 1. Begin by cloning this repository to your computer. It does not not matter where you clone it to, only that you may access it via Julia. 
@@ -20,7 +24,7 @@ To confirm that Dice is working correctly, run the ~simple.jl~ file. What you sh
 
 ~Final Max-Cut state: Int8[-1, 1, 1, -1, 1, -1, 1]~
 
-* Usage
+* Running First Simulation
 
 There are a few steps to run a simulation using Dice:
 
@@ -53,8 +57,16 @@ If scale is not given, then Dice will create a scale based on the number of node
 
 There are several coupling functions available, which relate the continous variable $x$ to the energy of the system. All coupling functions may be found in [[src/dynamical_kernels.jl][dynamical_kernels.jl]].
 
-Next one must specify the intial
+Next one must specify the intial configuration of spins and continous variables $x$. This is done through the use of ~get_random_hybrid~, which generates random spin configuration and random initial $x$ values. Note that you will need to specify the range of the $x$ value, which can be simply the width of the interval, $w$, ($x \in [-w/2, w/2]$) or the bounds of the interval from $[a,b]$, ($x \in [a,b]). Store this intitial state in a separate variable from your model. 
 
+** Running the Model
+
+Once you have the initial state, you can run the model to achieve the ground state. Depending on what you are looking for, you can run the model in two ways:
+
+- Using ~propagate~, which will return the final ground state of the model. 
+- Using ~trajectories~, which will return the intermediary steps of the computation as well as the final ground state.
+
+Look in ~simple.jl~ for an example on how to do all of this. You may also look in the source code to find other functions that may suit your needs.
 
 * Content
 
