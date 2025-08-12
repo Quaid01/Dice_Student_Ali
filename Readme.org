@@ -22,7 +22,39 @@ To confirm that Dice is working correctly, run the ~simple.jl~ file. What you sh
 
 * Usage
 
-WIP
+There are a few steps to run a simulation using Dice:
+
+- Creating a graph
+- Creating the model
+- Running the model
+
+** Create A Graph
+
+This graph represents the system of which the Ising machine will "run" on. Where each node is a particle that can take a spin $\sigma$ where $\sigma \in {-1,1}$ along as a continous variable $x$ where $x \in [-1,1)$. $x$ may or may not be used depending on the coupling function and method used (VERIFICATION NEEDED). Then one must add the edges which describe the coupling between the particles. 
+
+If an edge exists, then there will be interaction between those particles, otherwise there will be none. For example, if two particles have opposite spin, then the energy of the system decreases. If there is an edge between any two particles, then their spin interacion will be considered when computing the energy. If an edge does not exist, and say the spin of the particles were the same, the energy would not change as there is no interaction between the two particles due to the lack of an edge. 
+
+One can also give the edges different weights, or simply leave it as a simple binary value where $1$ means an edge exists while $0$ means that an edge doesn't between two nodes.
+
+Graphs here are made using the ~Graphs~ and ~SimpleWeightedGraphs~ Julia packages. Their respective documentation can be found below:
+
+- [[https://juliagraphs.org/Graphs.jl/dev/][Graphs Documentation]]
+
+- [[https://juliagraphs.org/SimpleWeightedGraphs.jl/stable/][SimpleWeightedGraphs Documentation]]
+
+** Creating the Model
+
+Here, Dice will take the graph created and turn it into a runable model. It requires a few key things:
+- The graph created
+- The coupling function
+- Scale (optional)
+
+If scale is not given, then Dice will create a scale based on the number of nodes in the graph. 
+
+There are several coupling functions available, which relate the continous variable $x$ to the energy of the system. All coupling functions may be found in [[Dice_Student_Ali/src/dynamical_kernels.jl][dynamical_kernels.jl]].
+
+Next one must specify the intial
+
 
 * Content
 
