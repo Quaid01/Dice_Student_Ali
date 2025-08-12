@@ -20,7 +20,7 @@ This is a Julia package that contains all the necessary functions, packages, as 
 3. While having Dice as your working directory, activate the Julia REPL by using the command ~julia~. 
 4. Open the package manager by typing ~]~, then type in ~dev .~ to add Dice to the list of available packages in Julia.
 
-To confirm that Dice is working correctly, run the ~simple.jl~ file. What you should get a random initial spin state (assigned to ~state[1]~) as well as the max-cut spin state noted as:
+To confirm that Dice is working correctly, run the [[simple.jl][simple.jl]] file. What you should get a random initial spin state (assigned to ~state[1]~) as well as the max-cut spin state noted as:
 
 ~Final Max-Cut state: Int8[-1, 1, 1, -1, 1, -1, 1]~
 
@@ -66,7 +66,7 @@ Once you have the initial state, you can run the model to achieve the ground sta
 - Using ~propagate~, which will return the final ground state of the model. 
 - Using ~trajectories~, which will return the intermediary steps of the computation as well as the final ground state.
 
-Look in ~simple.jl~ for an example on how to do all of this. You may also look in the source code to find other functions that may suit your needs.
+Look in [[simple.jl][simple.jl]] for an example on how to do all of this. You may also look in the source code to find other functions that may suit your needs.
 
 * Content
 
