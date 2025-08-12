@@ -11,7 +11,14 @@ Julia's implementation of a research dynamic Ising solver based on nonlinear rel
 
 * Installation
 
-WIP
+1. Begin by cloning this repository to your computer. It does not not matter where you clone it to, only that you may access it via Julia. 
+2. Change your working directory by using the `cd` or the relavant command in terminal to the cloned Dice repository.
+3. While having Dice as your working directory, activate the Julia REPL by using the command `julia`. 
+4. Open the package manager by typing `]`, then type in `dev .` to add Dice to the list of available packages in Julia.
+
+To confirm that Dice is working correctly, run the `simple.jl` file. What you should get a random initial spin state (assigned to `state[1]`) as well as the max-cut spin state noted as:
+
+`Final Max-Cut state: Int8[-1, 1, 1, -1, 1, -1, 1]`
 
 * Usage
 
