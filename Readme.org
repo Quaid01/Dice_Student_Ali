@@ -5,13 +5,9 @@
 #+OPTIONS: tex: t LaTeX: t toc:1 ^:{}
 #+DESCRIPTION:
 
-* Dice
-
-Julia's implementation of a research dynamic Ising solver based on nonlinear relaxations.
-
 * Usage
 
-This is a Julia package that contains all the necessary functions, packages, as well as other tools to run Ising machines using various relaxations and methods. You may find it useful to create your own code to suppliment functions found here. 
+Julia's implementation of a research dynamic Ising solver based on nonlinear relaxations. A Julia library that contains all the necessary functions, packages, as well as other tools to run Ising machines using various relaxations and methods. You may find it useful to create your own code to suppliment functions found here. 
 
 * Installation
 
