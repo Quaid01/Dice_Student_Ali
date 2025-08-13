@@ -62,7 +62,7 @@ Once you have the initial state, you can run the model to achieve the ground sta
 - Using ~propagate~, which will return the final ground state of the model. 
 - Using ~trajectories~, which will return the intermediary steps of the computation as well as the final ground state.
 
-Look in [[https://github.com/Quaid01/Dice_Student_Ali/blob/7820007354278e509b01cd6e71d32ccf604088bd/Example%20Scripts/simple.jl][simple.jl]] for an example on how to do all of this. There are other example files located in [[Example Scripts][example scripts]]You may also look in the source code to find other functions that may suit your needs.
+Look in [[https://github.com/Quaid01/Dice_Student_Ali/blob/7820007354278e509b01cd6e71d32ccf604088bd/Example%20Scripts/simple.jl][simple.jl]] for an example on how to do all of this. There are other example files located in [[Example Scripts][example scripts]]. You may also look in the source code to find other functions that may suit your needs.
 
 * Content
 
