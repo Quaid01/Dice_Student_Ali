@@ -64,6 +64,8 @@ const weight_eps = 1e-5
 # Data types for dynamical variables
 const FVector = Vector{Float64}
 const SpinConf = Vector{Int8}
+# It's not a vector of RelaxedSpin = Tuple{Spin, Interval}
+# because of the performance concerns
 const Hybrid = Tuple{SpinConf,FVector}
 
 # To specify the general kind of model (performance concerns?)
@@ -919,9 +921,7 @@ function step_rate_hybrid_pinned(graph::SimpleWeightedGraph,
                                  pinned::Vector{Int64})::FVector
     out = zeros(Float64, size(x))
     for node in vertices(graph)
-        if node in pinned
-            continue
-        end
+        node in pinned && continue
 
         for neib in neighbors(graph, node)
             out[node] += s[neib] * coupling(x[node], x[neib]) *
@@ -1083,8 +1083,8 @@ end
 
 """
     trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
-                             mtd::Function, start::Hybrid,
-                             pinned::Vector{Tuple{Int64, Int8}}) ::Vector{Hybrid}
+                        mtd::Function, start::Hybrid,
+                        pinned::Vector{Tuple{Int64, Int8}}) ::Vector{Hybrid}
 
 Advance the network set on `graph` governed by the dynamical kernel `mtd`
 in the initial relaxed spin state `start` for `tmax` steps each of duration
