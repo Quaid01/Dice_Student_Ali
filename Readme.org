@@ -11,22 +11,26 @@ Julia's implementation of a research dynamic Ising solver based on nonlinear rel
 
 * Installation
 
-<<<<<<< HEAD
-The repository can be cloned to any preferred directory
+The repository can be cloned to any preferred directory. To add =Dice= to the
+default Julia's environment: 
 
+1. Begin by cloning this repository to your computer. It does not not
+   matter where you clone it to, only that you may access it via Julia.
+2. Change your working directory by using the ~cd~ or the relevant command in
+   terminal to the cloned =Dice= repository.
+3. While having =Dice= as your working directory, activate the =Julia= REPL by
+   using the command ~julia~.
+4. Open the package manager by typing ~]~, then type in ~dev .~ to add =Dice= to
+   the list of available packages in =Julia=.
 
-
-WIP
-=======
-1. Begin by cloning this repository to your computer. It does not not matter where you clone it to, only that you may access it via Julia. 
-2. Change your working directory by using the ~cd~ or the relavant command in terminal to the cloned Dice repository.
-3. While having Dice as your working directory, activate the Julia REPL by using the command ~julia~. 
-4. Open the package manager by typing ~]~, then type in ~dev .~ to add Dice to the list of available packages in Julia.
->>>>>>> refs/remotes/origin/main
-
-To confirm that Dice is working correctly, run the [[https://github.com/Quaid01/Dice_Student_Ali/blob/7820007354278e509b01cd6e71d32ccf604088bd/Example%20Scripts/simple.jl][simple.jl]] file. What you should get a random initial spin state (assigned to ~state[1]~) as well as the max-cut spin state noted as:
+To confirm that =Dice= is working correctly, run the [[https://github.com/Quaid01/Dice_Student_Ali/blob/7820007354278e509b01cd6e71d32ccf604088bd/Example%20Scripts/simple.jl][simple.jl]] file. What you
+should get a random initial spin state (assigned to ~state[1]~) as well as
+the max-cut spin state noted as:
 
 ~Final Max-Cut state: Int8[-1, 1, 1, -1, 1, -1, 1]~
+
+To add =Dice= to a different (non-default) environment, activate the target
+environment first (WIP) before following Step 4 above.
 
 * Running First Simulation
 
@@ -78,10 +82,4 @@ Look in [[https://github.com/Quaid01/Dice_Student_Ali/blob/7820007354278e509b01c
 
 [[file:cases/][cases]] holds particular "releases" (see the description inside) and applications
 
-<<<<<<< HEAD
 The main page is [[https://github.com/merement/Dice.git]]
-=======
-The main page is https://github.com/merement/Dice.git
-
-
->>>>>>> refs/remotes/origin/main
