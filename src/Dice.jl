@@ -914,6 +914,18 @@ function step_rate_hybrid(graph::SimpleWeightedGraph,
     return out
 end
 
+"""
+    step_rate_hybrid_pinned(graph::SimpleWeightedGraph,
+                            coupling::Function,
+                            s::SpinConf,
+                            x::FVector,
+                            pinned::Vector{Int64})::FVector
+
+Evaluate the vector of rates for a weighted `graph` with the coupling
+function `coupling`, discrete spin state `s` and continuous component `x`.
+This function presumes that there are pinned nodes, for which the rate
+is set to zero.
+"""
 function step_rate_hybrid_pinned(graph::SimpleWeightedGraph,
                                  coupling::Function,
                                  s::SpinConf,
@@ -1046,7 +1058,13 @@ end
 
 Advance the network set on `graph` governed by the dynamical kernel `mtd`
 in the initial state `start` for `tmax` steps each of duration `scale` with
-spins listed in `pinned` fixed.
+spins listed in `pinned` together with the presumed values fixed.
+
+NOTE: This version ensures that the discrete component of the pinned
+relaxed spins is set to the value specified in `pinned`. The continuous
+component of the pinned nodes is set to 0.0. For a version of the method that
+simply preserves the initial values of the pinned relaxed spins, see the method
+with `pinned` being `Vector{Int64}`.
 """
 function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
     mtd::Function, start::Hybrid,
@@ -1073,13 +1091,62 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
     return (S, X)
 end
 
+"""
+    propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                          mtd::Function, start::Hybrid,
+                          pinned::Vector{Int64})::Hybrid
+
+Advance the network set on `graph` governed by the dynamical kernel `mtd`
+in the initial state `start` for `tmax` steps each of duration `scale` with
+spins listed in `pinned` fixed.
+
+NOTE: This version preserves the initial value of pinned relaxed spins.
+"""
+function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                          mtd::Function, start::Hybrid,
+                          pinned::Vector{Int64})::Hybrid
+
+    S = start[1]
+    X = start[2]
+    # TEMP: ensure that pinned pins are preserved
+    pinned_spins = [(S[pin], X[pin]) for pin in pinned]
+
+    for _ = 1:(tmax-1)
+        DX = step_rate_hybrid_pinned(graph, mtd, S, X, pinned) .* scale
+        update_hybrid!(S, X, DX)
+        # This code is kept here to remind that the pinned version of
+        # step_rate explicitly avoids updating pinned nodes
+        # for pin in pinned
+        #     S[pin[1]] = pin[2]
+        #     X[pin[1]] = 0.0
+        # end
+    end
+    # TEMP: verify the pinned nodes
+    for (ind, pin) in enumerate(pinned)
+        if S[pin] != pinned_spins[ind][1] ||
+            abs(X[pin] - pinned_spins[ind][2]) > WEAK_TOL
+            error("Pinned spin #$i (index $pin) is not preserved")
+        end
+    end
+    return (S, X)
+end
+
 function propagate_pinned(model::Model, tmax::Int, start::Hybrid,
-                          pinned::Vector{Tuple{Int64,Int8}})::Hybrid
+                          pinned::Vector)::Hybrid
     # Advances the model in the initial state (Sstart, Xstart)
     # for tmax time steps with pinned spins in pinned
+    # Should work for both pinned versions
     return propagate_pinned(model.graph, tmax, model.scale,
         model.coupling, start, pinned)
 end
+
+# function propagate_pinned(model::Model, tmax::Int, start::Hybrid,
+#                           pinned::Vector{Tuple{Int64,Int8}})::Hybrid
+#     # Advances the model in the initial state (Sstart, Xstart)
+#     # for tmax time steps with pinned spins in pinned
+#     return propagate_pinned(model.graph, tmax, model.scale,
+#         model.coupling, start, pinned)
+# end
 
 """
     trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
@@ -1091,6 +1158,12 @@ in the initial relaxed spin state `start` for `tmax` steps each of duration
 `scale` with spins listed in `pinned` fixed. Store all intermediates states
 of the relaxed spin vector at all instances, including the initial state, and
 return the accumulated array of relaxed spin states.
+
+NOTE: This version ensures that the discrete component of the pinned
+relaxed spins is set to the value specified in `pinned`. The continuous
+component of the pinned nodes is set to 0.0. For a version of the method that
+simply preserves the initial values of the pinned relaxed spins, see the method
+with `pinned` being `Vector{Int64}`.
 """
 function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
                              mtd::Function, start::Hybrid,
@@ -1111,6 +1184,46 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
         update_hybrid!(S, X, DX)
         push!(sx, (copy(S), copy(X)))
     end
+    return sx
+end
+
+"""
+    trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                        mtd::Function, start::Hybrid,
+                        pinned::Vector{Int64}) ::Vector{Hybrid}
+
+Advance the network set on `graph` governed by the dynamical kernel `mtd`
+in the initial relaxed spin state `start` for `tmax` steps each of duration
+`scale` with spins listed in `pinned` fixed. Store all intermediates states
+of the relaxed spin vector at all instances, including the initial state, and
+return the accumulated array of relaxed spin states.
+
+NOTE: This version preserves the initial value of pinned relaxed spins.
+"""
+function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
+                             mtd::Function, start::Hybrid,
+                             pinned::Vector{Int64})::Vector{Hybrid}
+    S = start[1]
+    X = start[2]
+    # TEMP: ensure that pinned pins are preserved
+    pinned_spins = [(S[pin], X[pin]) for pin in pinned]
+
+    sx::Vector{Hybrid} = []
+    push!(sx, (copy(S), copy(X)))
+
+    for _ = 1:(tmax-1)
+        DX = step_rate_hybrid_pinned(graph, mtd, S, X, pinned) .* scale
+        update_hybrid!(S, X, DX)
+        push!(sx, (copy(S), copy(X)))
+    end
+    # TEMP: verify the pinned nodes
+    for (ind, pin) in enumerate(pinned)
+        if S[pin] != pinned_spins[ind][1] ||
+            abs(X[pin] - pinned_spins[ind][2]) > WEAK_TOL
+            error("Pinned spin #$i (index $pin) is not preserved")
+        end
+    end
+
     return sx
 end
 
