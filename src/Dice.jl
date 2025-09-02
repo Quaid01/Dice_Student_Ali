@@ -1108,8 +1108,8 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
 
     S = start[1]
     X = start[2]
-    # TEMP: ensure that pinned pins are preserved
-    pinned_spins = [(S[pin], X[pin]) for pin in pinned]
+    # # TEMP: ensure that pinned pins are preserved
+    # pinned_spins = [(S[pin], X[pin]) for pin in pinned]
 
     for _ = 1:(tmax-1)
         DX = step_rate_hybrid_pinned(graph, mtd, S, X, pinned) .* scale
@@ -1121,13 +1121,13 @@ function propagate_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
         #     X[pin[1]] = 0.0
         # end
     end
-    # TEMP: verify the pinned nodes
-    for (ind, pin) in enumerate(pinned)
-        if S[pin] != pinned_spins[ind][1] ||
-            abs(X[pin] - pinned_spins[ind][2]) > WEAK_TOL
-            error("Pinned spin #$i (index $pin) is not preserved")
-        end
-    end
+    # # TEMP: verify the pinned nodes
+    # for (ind, pin) in enumerate(pinned)
+    #     if S[pin] != pinned_spins[ind][1] ||
+    #         abs(X[pin] - pinned_spins[ind][2]) > weight_eps
+    #         error("Pinned spin #$i (index $pin) is not preserved")
+    #     end
+    # end
     return (S, X)
 end
 
@@ -1205,8 +1205,8 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
                              pinned::Vector{Int64})::Vector{Hybrid}
     S = start[1]
     X = start[2]
-    # TEMP: ensure that pinned pins are preserved
-    pinned_spins = [(S[pin], X[pin]) for pin in pinned]
+    # # TEMP: ensure that pinned pins are preserved
+    # pinned_spins = [(S[pin], X[pin]) for pin in pinned]
 
     sx::Vector{Hybrid} = []
     push!(sx, (copy(S), copy(X)))
@@ -1216,22 +1216,28 @@ function trajectories_pinned(graph::ModelGraph, tmax::Int, scale::Float64,
         update_hybrid!(S, X, DX)
         push!(sx, (copy(S), copy(X)))
     end
-    # TEMP: verify the pinned nodes
-    for (ind, pin) in enumerate(pinned)
-        if S[pin] != pinned_spins[ind][1] ||
-            abs(X[pin] - pinned_spins[ind][2]) > WEAK_TOL
-            error("Pinned spin #$i (index $pin) is not preserved")
-        end
-    end
+    # # TEMP: verify the pinned nodes
+    # for (ind, pin) in enumerate(pinned)
+    #     if S[pin] != pinned_spins[ind][1] ||
+    #         abs(X[pin] - pinned_spins[ind][2]) > weight_eps
+    #         error("Pinned spin #$i (index $pin) is not preserved")
+    #     end
+    # end
 
     return sx
 end
 
 function trajectories_pinned(model::Model, tmax::Int, start::Hybrid,
-                             pinned::Vector{Tuple{Int64,Int8}})
+                             pinned::Vector)::Vector{Hybrid}
     return trajectories_pinned(model.graph, tmax, model.scale,
                                model.coupling, start, pinned)
 end
+
+# function trajectories_pinned(model::Model, tmax::Int, start::Hybrid,
+#                              pinned::Vector{Tuple{Int64,Int8}})
+#     return trajectories_pinned(model.graph, tmax, model.scale,
+#                                model.coupling, start, pinned)
+# end
 
 ###   Extended methods treating anisotropy dynamically
 

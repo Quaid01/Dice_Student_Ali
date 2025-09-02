@@ -1,7 +1,7 @@
 name = "Dice"
 uuid = "b1032ea8-0e44-4f5e-a542-828f9d6795b4"
 authors = ["Misha Erementchouk <merement@gmail.com>"]
-version = "0.3.3"
+version = "0.3.4"
 
 [deps]
 Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
