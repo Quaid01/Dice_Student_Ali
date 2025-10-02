@@ -1250,7 +1250,8 @@ function realign_hybrid(conf::Hybrid, r=0.0)::Hybrid
     # according to xi - r = sigma(r) + X(r)
     # INPUT & OUTPUT:
     #     conf = (sigma, X)
-    V = Dice.hybrid_to_cont(conf[1], conf[2])
+    # Rotates the circle by r, and increases all continous components by -r
+    V = Dice.hybrid_to_cont(conf, 0.0)
     return Dice.cont_to_hybrid(V, r)
 end
 
